@@ -126,18 +126,18 @@ direction moves the outcome.
   - [x] Pointer-drag ship movement
   - [x] No scroll / zoom / rubber-band / text select
   - [x] Commit + push to new GitHub repo
-- [ ] **Phase 2 — Core loop**
+- [x] **Phase 2 — Core loop**
   - [x] Invader grid, step-march + descent
   - [x] Straight shots, projectile pooling
   - [x] Collision detection
   - [x] Score, lives, invader return fire
   - [x] Win condition (grid cleared) and loss conditions (bottom line, lives out)
-  - [ ] Commit
-- [ ] **Phase 3 — PRECISION**
-  - [ ] Weighted shot roll: homing / straight / inexplicable miss
-  - [ ] Homing curve math — graceful arc, not a snap
-  - [ ] Acquire range and homing strength in CONFIG
-  - [ ] Slow fire cadence
+  - [x] Commit
+- [x] **Phase 3 — PRECISION**
+  - [x] Weighted shot roll: homing / straight / inexplicable miss
+  - [x] Homing curve math — graceful arc, not a snap
+  - [x] Acquire range and homing strength in CONFIG
+  - [x] Slow fire cadence
   - [ ] Commit
 - [ ] **Phase 4 — VOLUME**
   - [ ] High fire rate
@@ -173,7 +173,27 @@ direction moves the outcome.
 
 ## 8. Deviations from plan
 
-**Phase 2 — formation turn bounds are fixed, not live.**
+**Phase 3 — the fixed turn bounds from Phase 2 were reverted, on Colin's call.**
+Colin asked for the authentic arcade behaviour, so the formation now turns at
+the edges of the *surviving* invaders and speeds up as the grid thins out, both
+of which are what the original machine did. The clock is therefore no longer
+identical between characters — it reacts to how fast you are killing. It is
+still emergent (it falls out of the alive count) and still character-blind.
+Round length is now held to target by tuning instead. The Phase 2 note below is
+kept for the record.
+
+**Phase 3 — `sim.js` was built early.**
+The plan put the harness in Phase 7. PRECISION could not be tuned by eye, so it
+was written here instead. Everything the plan asked of it is in place:
+autopilot player, N seeds per character, win rate / round length / shots / hit
+rate, and a SPAM-absorbed share that stays at zero until Phase 5 fills it in.
+
+**Phase 3 — lives 3 → 4, stun 1.0s → 0.6s.**
+Measured, not guessed. At 3 lives a competent player lost to enemy fire often
+enough to cost PRECISION about four points of win rate with one or two invaders
+left on screen. Both values are shared by the two characters.
+
+**Phase 2 — formation turn bounds are fixed, not live.** *(superseded in Phase 3)*
 Classic Space Invaders turns the formation around when the *surviving* invaders
 reach a wall, so killing the edge columns slows the descent. That would make the
 descent clock depend on how many you have killed, which would hand PRECISION a
@@ -191,6 +211,22 @@ spawn path instead of replacing it.
 
 ---
 
-## 9. Final sim results
+## 9. Sim results
 
-*(Filled in at Phase 7.)*
+### Phase 3 — PRECISION tuned (VOLUME not yet built; it is still firing
+### straight shots at a very high rate and so clears easily)
+
+    PRECISION   (200 seeded runs)
+      win rate .............. 97.0%   (194/200)
+      median round .......... 88.0s
+      median winning round .. 88.1s
+      median shots fired .... 51
+      hit rate per shot ..... 67.3%
+      median invaders left .. 0
+      outcomes .............. cleared 194, landed 3, lives 3
+      hits by shot type ..... homing 76.9%   straight 48.0%   miss 52.2%
+
+Holdout check on an independent seed range (501-700): **96.5%**, median 88s.
+Target was >= 95% and 90s +/- 25%. Both met.
+
+*(Final combined results filled in at Phase 7.)*

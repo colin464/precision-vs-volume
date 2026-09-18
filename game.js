@@ -39,7 +39,6 @@
      CONFIG — every tuning lever in the game.
 
      Each value carries a note saying which direction moves the outcome.
-     Values marked (phase N) are scaffolded now and come into use in that phase.
      -------------------------------------------------------------------------- */
   var CONFIG = {
 
@@ -49,10 +48,13 @@
       // Ship cannot travel past this margin from either wall.
       shipMargin: 18,
       // Lives at the start of a round. More = more forgiving, longer rounds.
-      lives: 3,
+      // Tuned: at 3, a competent player loses to enemy fire often enough to
+      // cost PRECISION ~4 points of win rate before it can finish clearing.
+      lives: 4,
       // Seconds the ship is stunned (and cannot fire) after being hit.
-      // Higher = harsher for both characters.
-      hitStunSec: 1.0,
+      // Higher = harsher for both characters, and costs the slow-firing
+      // character proportionally more shots than the fast-firing one.
+      hitStunSec: 0.6,
       // Points per invader destroyed.
       pointsPerKill: 10,
       // Hard ceiling on a round, so a stalemate can never hang the sim.
@@ -76,41 +78,74 @@
       originY: 96,        // Starting Y of the top row. Lower = more time for both.
       wallMargin: 14,     // How close the formation gets to a wall before turning.
 
-      // ---- THE MASTER CLOCK ----------------------------------------------
+      // ---- THE CLOCK ------------------------------------------------------
       // The formation marches side to side and drops every time it turns.
-      // These three values together decide how long the player has, and they
-      // are identical for both characters. This is the only thing creating
-      // time pressure in the game.
-      stepInterval: 0.14, // Seconds between march steps. LOWER = faster march
-                          //   = more turns = grid lands sooner.
-      stepX: 4,           // World units moved per march step. HIGHER = same effect.
-      descentRate: 8,     // World units dropped per turn.
-                          //   HIGHER = grid lands sooner = less time for
-                          //   everyone = VOLUME loses harder and PRECISION's
-                          //   winning margin shrinks.
-      bottomLine: 556,    // Y at which invaders count as landed. Player loses.
+      // These values are identical for both characters and are the only thing
+      // creating time pressure in the game.
+      //
+      // Two authentic arcade behaviours make the clock react to the player's
+      // own progress rather than run on a rail:
+      //   * the formation turns at the edges of the SURVIVING invaders, so
+      //     clearing the flanks widens its runway and slows the descent;
+      //   * the march speeds up as the grid thins out.
+      // Both emerge from how many invaders are left. Neither reads the
+      // character, and neither is on a timer.
+      stepInterval: 0.15,     // Seconds between march steps with a full grid.
+                              //   LOWER = faster march = grid lands sooner.
+      stepIntervalMin: 0.028, // Seconds between march steps with one invader left.
+                              //   LOWER = frantic endgame, grid lands sooner.
+      stepX: 4,               // World units moved per march step.
+      descentRate: 6.4,       // World units dropped per turn.
+                              //   HIGHER = grid lands sooner = less time for
+                              //   everyone = VOLUME loses harder and
+                              //   PRECISION's winning margin shrinks.
+      bottomLine: 556,        // Y at which invaders count as landed. Player loses.
 
       // ---- Invader return fire — IDENTICAL for both characters -------------
-      fireIntervalRange: [1.5, 3.2], // Seconds between enemy shots. LOWER = harder.
+      fireIntervalRange: [2.0, 4.0], // Seconds between enemy shots. LOWER = harder.
       bulletSpeed: 155,   // World units/sec downward.
       bulletHalfW: 2,
       bulletHalfH: 6
     },
 
+    /* ------------------------------------------------------------------------
+       THE TWO CHARACTERS
+
+       Both are fired and steered by exactly the same code (see spawnPlayerShot
+       and updatePlayerShots). Every shot in the game resolves to one of three
+       behaviours — homing, straight, miss — and the only difference between
+       the characters is how often each behaviour comes up and how hard the
+       numbers push.
+       ---------------------------------------------------------------------- */
+
     precision: {
-      fireIntervalMs: 1500,      // LOWER = clears faster = PRECISION wins more.
+      fireIntervalMs: 1720,      // LOWER = clears faster = PRECISION wins more.
+                                 //   Also the main dial on round length.
       bulletSpeed: 460,          // Higher = less time for the grid to move on.
-      weights: {                 // Relative odds of each shot behaviour. (phase 3)
-        homing: 62,              //   Raise = higher hit rate = more wins.
-        straight: 30,            //   Straight only hits what is already above.
+
+      weights: {                 // Relative odds of each shot behaviour.
+        homing: 66,              //   Raise = higher hit rate = more wins.
+        straight: 26,            //   Straight only hits what is already above,
+                                 //   and the ship is usually moving, so these
+                                 //   land about half the time.
         miss: 8                  //   Raise = lower hit rate = fewer wins.
       },
-      homingStrength: 5.2,       // How hard a homing shot curves. Too high
-                                 //   looks like a snap; too low and it misses.
+
+      homingDelaySec: 0.18,      // Straight flight before the curve begins.
+                                 //   Higher = later, sharper turn; too high misses.
+      homingStrength: 5.2,       // How fast the shot settles onto its intercept.
+                                 //   Too high looks like a snap, too low misses.
       homingAcquireRange: 150,   // Horizontal reach when picking a target.
                                  //   Wider = more shots find someone = more wins.
+                                 //   Measured inert above ~150: at this grid
+                                 //   spacing there is always a target closer
+                                 //   than that, so raising it changes nothing.
       homingMaxTurn: 300,        // Cap on lateral speed. Keeps the arc graceful.
-      missDriftAmount: 90,       // Lateral drift on a deliberate miss.
+
+      missDriftAmount: 90,       // Lateral drift speed on an inexplicable miss.
+      missOnsetRange: [0.10, 0.30], // Straight flight before the drift begins.
+      missWobble: 2.2,           // Wobble frequency, so misses are not uniform.
+
       shipLagFactor: 0.06,       // 0 = instant response, 1 = very sluggish.
       shipOvershoot: 0.10        // 0 = stops dead, 1 = slides way past target.
     },
@@ -118,11 +153,18 @@
     volume: {
       fireIntervalMs: 120,       // LOWER = more shots. Does not fix the hit rate.
       bulletSpeed: 400,
-      curveAwayProbability: 0.86,// Share of shots that veer off. HIGHER = VOLUME
-                                 //   loses more. The main accuracy lever. (phase 4)
+
+      // VOLUME has no homing at all. Every shot is either straight or veers
+      // away, and the split is set by this one number.
+      curveAwayProbability: 0.86,// Share of shots that veer off.
+                                 //   HIGHER = VOLUME loses more.
+                                 //   The main accuracy lever.
       curveMagnitudeRange: [55, 190], // Lateral drift speed of a veering shot.
-      curveOnsetRange: [0.05, 0.28],  // Seconds of straight flight before veering.
+                                 //   Lower values can still accidentally hit.
+      curveOnsetRange: [0.05, 0.28],  // Straight flight before the veer begins.
+                                 //   Higher = leaves the gun straighter for longer.
       curveWobble: 5.5,          // Wobble frequency, so curves look erratic.
+
       shipLagFactor: 0.78,       // 0 = instant response, 1 = very sluggish.
       shipOvershoot: 0.72        // 0 = stops dead, 1 = slides way past target.
     },
@@ -211,11 +253,48 @@
   /* One spring, two sets of numbers. PRECISION gets a tight, well-damped
      spring; VOLUME gets a loose, underdamped one that slides past the target.
      Same code path, same maths, different CONFIG values. */
-  function springFor(handling) {
-    var k = 1500 - (1500 - 180) * clamp01(handling.shipLagFactor);
+  function springFor(cfg) {
+    var k = 1500 - (1500 - 180) * clamp01(cfg.shipLagFactor);
     var critical = 2 * Math.sqrt(k);
-    var c = critical * (1 - 0.88 * clamp01(handling.shipOvershoot));
+    var c = critical * (1 - 0.88 * clamp01(cfg.shipOvershoot));
     return { k: k, c: c };
+  }
+
+  /* The two characters describe their shots in different CONFIG vocabulary,
+     because each set of names says what that character is actually doing.
+     This normalises both into ONE shot model with three behaviours, so a
+     single code path spawns and steers every shot in the game. It reads the
+     shape of the config, never the character's name — swap the two configs
+     over and the two characters swap behaviour with them. */
+  function shotProfile(cfg) {
+    if (cfg.weights) {
+      return {
+        weights: cfg.weights,
+        homingDelay: cfg.homingDelaySec,
+        homingStrength: cfg.homingStrength,
+        homingAcquireRange: cfg.homingAcquireRange,
+        homingMaxTurn: cfg.homingMaxTurn,
+        driftRange: [cfg.missDriftAmount * 0.7, cfg.missDriftAmount * 1.3],
+        onsetRange: cfg.missOnsetRange,
+        wobble: cfg.missWobble
+      };
+    }
+    // A config that names a curve-away probability instead of weights is
+    // describing the same three behaviours with no homing in the mix.
+    return {
+      weights: {
+        homing: 0,
+        straight: 1 - cfg.curveAwayProbability,
+        miss: cfg.curveAwayProbability
+      },
+      homingDelay: 0,
+      homingStrength: 0,
+      homingAcquireRange: 0,
+      homingMaxTurn: 0,
+      driftRange: cfg.curveMagnitudeRange,
+      onsetRange: cfg.curveOnsetRange,
+      wobble: cfg.curveWobble
+    };
   }
 
   /* --------------------------------------------------------------------------
@@ -230,21 +309,17 @@
     var CW = CONFIG.world;
     var charCfg = character === 'volume' ? CONFIG.volume : CONFIG.precision;
     var spring = springFor(charCfg);
+    var P = shotProfile(charCfg);
 
-    // The formation's own geometry. Its left/right travel limits are fixed by
-    // the full grid, not by which invaders are still alive, so the grid lands
-    // at the same moment in every round of every character. This is what makes
-    // "time remaining" an identical, shared clock.
     var formationW = (CI.cols - 1) * CI.cellW;
     var originX = (WORLD.w - formationW) / 2;
-    var minOffX = CI.wallMargin + CI.halfWidth - originX;
-    var maxOffX = WORLD.w - CI.wallMargin - CI.halfWidth - (originX + formationW);
+    var totalInvaders = CI.rows * CI.cols;
 
     var state = {
       character: character,
       seed: rng.seed,
       phase: 'playing',       // 'playing' | 'won' | 'lost'
-      lossReason: null,       // 'landed' | 'lives' | null
+      lossReason: null,       // 'landed' | 'lives' | 'timeout' | null
       elapsed: 0,
       score: 0,
       lives: CW.lives,
@@ -269,7 +344,9 @@
         shotsHit: 0,
         shotsAbsorbed: 0,
         kills: 0,
-        hitsTaken: 0
+        hitsTaken: 0,
+        byKind: { homing: 0, straight: 0, miss: 0 },
+        hitsByKind: { homing: 0, straight: 0, miss: 0 }
       }
     };
 
@@ -279,7 +356,6 @@
         state.invaders.push({
           row: r, col: c,
           alive: true,
-          // Row decides which of the three sprite families it draws as.
           type: r === 0 ? 0 : (r < 3 ? 1 : 2),
           x: originX + c * CI.cellW,
           y: CI.originY + r * CI.cellH
@@ -294,7 +370,7 @@
       state.shots.push({
         active: false, x: 0, y: 0, vx: 0, vy: 0,
         kind: 'straight', age: 0, target: null,
-        curveDelay: 0, curveVx: 0, wobblePhase: 0
+        onset: 0, driftVx: 0, wobblePhase: 0
       });
     }
     for (i = 0; i < CONFIG.limits.enemyShots; i++) {
@@ -324,51 +400,98 @@
       if (s.x > hi) { s.x = hi; if (s.vx > 0) s.vx = 0; }
     }
 
-    /* ---- Invader formation ----------------------------------------------- */
-    function updateFormation(dt) {
+    /* ---- Invader formation ------------------------------------------------
+       Arcade behaviour: the formation turns at the edges of the invaders that
+       are still alive, and marches faster as the grid thins out. Clear the
+       flanks and the formation gets a longer runway and descends less often;
+       thin it out and every survivor moves quicker. Both fall out of the
+       alive count, for whoever is playing.
+       ---------------------------------------------------------------------- */
+    function liveColumnRange() {
+      var minCol = Infinity, maxCol = -Infinity;
+      for (var j = 0; j < state.invaders.length; j++) {
+        var inv = state.invaders[j];
+        if (!inv.alive) continue;
+        if (inv.col < minCol) minCol = inv.col;
+        if (inv.col > maxCol) maxCol = inv.col;
+      }
+      return { minCol: minCol, maxCol: maxCol };
+    }
+
+    function repositionInvaders() {
       var f = state.formation;
+      for (var j = 0; j < state.invaders.length; j++) {
+        var inv = state.invaders[j];
+        inv.x = originX + inv.col * CI.cellW + f.offX;
+        inv.y = CI.originY + inv.row * CI.cellH + f.offY;
+      }
+    }
+
+    function updateFormation(dt) {
+      if (state.aliveCount === 0) return;
+      var f = state.formation;
+
+      // March interval scales with how much of the grid is left.
+      var aliveFrac = state.aliveCount / totalInvaders;
+      var interval = CI.stepIntervalMin + (CI.stepInterval - CI.stepIntervalMin) * aliveFrac;
+
       f.stepTimer += dt;
-      while (f.stepTimer >= CI.stepInterval) {
-        f.stepTimer -= CI.stepInterval;
+      while (f.stepTimer >= interval) {
+        f.stepTimer -= interval;
         f.frame ^= 1;
+
+        var range = liveColumnRange();
+        var minOffX = CI.wallMargin + CI.halfWidth - originX - range.minCol * CI.cellW;
+        var maxOffX = WORLD.w - CI.wallMargin - CI.halfWidth - originX - range.maxCol * CI.cellW;
+
+        // Kills can widen the runway underneath us; keep the formation inside it.
+        if (f.offX < minOffX) f.offX = minOffX;
+        if (f.offX > maxOffX) f.offX = maxOffX;
 
         var nextOff = f.offX + f.dir * CI.stepX;
         if (nextOff > maxOffX || nextOff < minOffX) {
-          // Hit a wall: turn around and drop. This is the only thing that
-          // brings the grid down, and it is identical for both characters.
           f.dir = -f.dir;
           f.offY += CI.descentRate;
         } else {
           f.offX = nextOff;
         }
 
-        // Republish positions onto the invaders themselves.
-        for (var j = 0; j < state.invaders.length; j++) {
-          var inv = state.invaders[j];
-          inv.x = originX + inv.col * CI.cellW + f.offX;
-          inv.y = CI.originY + inv.row * CI.cellH + f.offY;
-        }
+        repositionInvaders();
       }
     }
 
-    /* ---- Player fire ----------------------------------------------------- */
-    // Phase 2 fires straight shots only. Phases 3 and 4 add the per-character
-    // behaviours on top of this same spawn path.
+    /* ---- Player fire ------------------------------------------------------
+       ONE path for every shot in the game. The behaviour is rolled from the
+       character's weights; the steering below then runs the same maths on
+       whichever behaviour came up.
+       ---------------------------------------------------------------------- */
     function spawnPlayerShot() {
       var shot = takeFrom(state.shots);
       if (!shot) return;
+
+      var kind = rng.weighted(P.weights);
+
       shot.active = true;
       shot.x = state.ship.x;
       shot.y = state.ship.y - CONFIG.ship.halfHeight - 2;
-      shot.vx = 0;
+      shot.vx = 0;                                  // every shot leaves straight
       shot.vy = -charCfg.bulletSpeed;
-      shot.kind = 'straight';
+      shot.kind = kind;
       shot.age = 0;
       shot.target = null;
-      shot.curveDelay = 0;
-      shot.curveVx = 0;
-      shot.wobblePhase = 0;
+
+      if (kind === 'miss') {
+        shot.onset = rng.pair(P.onsetRange);
+        shot.driftVx = rng.sign() * rng.pair(P.driftRange);
+        shot.wobblePhase = rng.range(0, Math.PI * 2);
+      } else {
+        shot.onset = 0;
+        shot.driftVx = 0;
+        shot.wobblePhase = 0;
+      }
+
       state.stats.shotsFired++;
+      state.stats.byKind[kind]++;
     }
 
     function updatePlayerFire(dt) {
@@ -381,16 +504,55 @@
       }
     }
 
+    /* Pick something this shot is not currently lined up with, within reach.
+       Prefers targets close in X and low on the screen. */
+    function acquireTarget(shot) {
+      var best = null, bestScore = Infinity;
+      for (var j = 0; j < state.invaders.length; j++) {
+        var inv = state.invaders[j];
+        if (!inv.alive) continue;
+        if (inv.y > shot.y - 40) continue;               // must be meaningfully above
+        var dx = Math.abs(inv.x - shot.x);
+        if (dx > P.homingAcquireRange) continue;
+        var score = dx + (shot.y - inv.y) * 0.22;
+        if (score < bestScore) { bestScore = score; best = inv; }
+      }
+      return best;
+    }
+
+    function steerShot(s, dt) {
+      if (s.kind === 'homing') {
+        if (s.age < P.homingDelay) return;               // starts straight
+        if (!s.target || !s.target.alive) s.target = acquireTarget(s);
+        if (!s.target) return;                           // nothing in reach: flies on
+        // Lead the target: work out the sideways speed that arrives at the
+        // same moment the shot reaches its row, then ease onto it. Easing is
+        // what makes this read as an arc rather than a snap.
+        var tti = Math.max(0.06, (s.y - s.target.y) / Math.abs(s.vy));
+        var need = clamp((s.target.x - s.x) / tti, -P.homingMaxTurn, P.homingMaxTurn);
+        s.vx += (need - s.vx) * P.homingStrength * dt;
+
+      } else if (s.kind === 'miss') {
+        if (s.age < s.onset) return;                     // leaves the gun straight
+        var w = Math.sin(s.wobblePhase + s.age * P.wobble);
+        var want = s.driftVx * (0.65 + 0.35 * w);
+        s.vx += (want - s.vx) * 6 * dt;
+      }
+      // 'straight' does nothing — it keeps the vx of 0 it was fired with.
+    }
+
     function updatePlayerShots(dt) {
       for (var j = 0; j < state.shots.length; j++) {
         var s = state.shots[j];
         if (!s.active) continue;
+
         s.age += dt;
+        steerShot(s, dt);
         s.x += s.vx * dt;
         s.y += s.vy * dt;
+
         if (s.y < -20 || s.x < -20 || s.x > WORLD.w + 20) { s.active = false; continue; }
 
-        // Collision with invaders.
         for (var k = 0; k < state.invaders.length; k++) {
           var inv = state.invaders[k];
           if (!inv.alive) continue;
@@ -400,6 +562,7 @@
             state.score += CW.pointsPerKill;
             state.stats.kills++;
             state.stats.shotsHit++;
+            state.stats.hitsByKind[s.kind]++;
             s.active = false;
             break;
           }
@@ -423,7 +586,6 @@
       if (state.enemyFireTimer > 0) return;
       state.enemyFireTimer = rng.pair(CI.fireIntervalRange);
 
-      // Pick a random column that still has someone in it.
       var cols = [];
       for (var c = 0; c < CI.cols; c++) if (bottomMostInColumn(c)) cols.push(c);
       if (!cols.length) return;
