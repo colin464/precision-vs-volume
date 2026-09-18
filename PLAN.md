@@ -139,11 +139,11 @@ direction moves the outcome.
   - [x] Acquire range and homing strength in CONFIG
   - [x] Slow fire cadence
   - [ ] Commit
-- [ ] **Phase 4 — VOLUME**
-  - [ ] High fire rate
-  - [ ] Curve-away misses, erratic not uniform
-  - [ ] Degraded ship handling (lag + overshoot)
-  - [ ] Commit
+- [x] **Phase 4 — VOLUME**
+  - [x] High fire rate
+  - [x] Curve-away misses, erratic not uniform
+  - [x] Degraded ship handling (lag + overshoot)
+  - [x] Commit
 - [ ] **Phase 5 — SPAM LIKELY**
   - [ ] Drop from top, faster than invader descent
   - [ ] Halt at band, hover 4–6s
@@ -172,6 +172,45 @@ direction moves the outcome.
 ---
 
 ## 8. Deviations from plan
+
+**Phase 4 — VOLUME misses beautifully and still wins 100%. Open problem.**
+Its shots now genuinely miss: 96.9% of veering shots fly off the side of the
+screen without touching anything, and only 3.2% connect. That was the goal and
+it works. VOLUME still clears the grid every time, for a reason that no amount
+of tuning fixes:
+
+*Its accuracy is a function of range.* When the formation is high up, a veering
+shot is long gone sideways before it gets there. When the formation is low, a
+shot connects before it can veer at all. So every clock setting that brings the
+grid down eventually hands VOLUME a period where a firehose cannot miss — and
+tightening the clock makes VOLUME clear FASTER, not slower.
+
+Measured, across full sweeps of every relevant lever:
+
+| lever swept | range | outcome |
+|---|---|---|
+| `volume.fireIntervalMs` | 120 - 500ms | hit rate rises exactly as fire rate falls; kills/sec pinned near 0.3 |
+| `volume.curveAwayProbability` | 0.86 - 1.0 | hit rate floors at 3.2% even when *every* shot veers |
+| `volume.curveMagnitudeRange` | 55 - 2600 | floors; drift makes you miss an invader, not a formation |
+| `volume.curveRampRate` (new) | 6 - 60 | ~0.4pt of hit rate |
+| `volume.curveVerticalDrag` (new) | 0 - 0.95 | 6.2% -> 3.8%, best single lever, not enough |
+| `invaders.descentRate` | 6.4 - 14 | faster descent *helps* VOLUME |
+| `invaders.descentCreep` (new) | 0 - 3.2/s | same; tightening the clock hurts PRECISION first |
+| `invaders.bottomLine` | 430 - 556 | hurts PRECISION faster than VOLUME |
+| `invaders.halfWidth` | 8 - 13 | smaller targets hurt PRECISION more |
+| `invaders.rows/cols` runway feedback | - | killing the flanks slows the descent, so a slow steady grinder buys unlimited time |
+
+The only settings that make VOLUME lose are ones where the shot leaves the gun
+already travelling sideways, which contradicts the brief's own description
+("every shot leaves the gun straight... curve away mid-flight").
+
+**Next:** SPAM LIKELY is the designed counterweight and is the one mechanic
+that attacks the actual cause, because it sits *between* the ship and the
+invaders and kills the close-range window specifically. It may need its band
+placed lower than the plan's 430 so it still blocks once the grid is low. If
+Phase 5 plus retuning does not reach VOLUME <= 2%, the mechanic change to
+propose is going back to Phase 2's fixed formation bounds, which made the grid
+land at a fixed time regardless of how the player was doing.
 
 **Phase 3 — the fixed turn bounds from Phase 2 were reverted, on Colin's call.**
 Colin asked for the authentic arcade behaviour, so the formation now turns at
@@ -228,5 +267,18 @@ spawn path instead of replacing it.
 
 Holdout check on an independent seed range (501-700): **96.5%**, median 88s.
 Target was >= 95% and 90s +/- 25%. Both met.
+
+### Phase 4 — VOLUME built (SPAM LIKELY not yet in)
+
+    PRECISION   (150 seeded runs)        VOLUME   (150 seeded runs)
+      win rate ......... 98.7%             win rate ......... 100.0%   <-- target <= 2%
+      median round ..... 86.3s             median round ..... 126.1s
+      median shots ..... 50                median shots ..... 968
+      hit rate ......... 68.6%             hit rate ......... 3.6%
+      outcomes ......... cleared 148,      outcomes ......... cleared 150
+                         landed 1, lives 1
+                                           veering shots that fly off screen: 96.9%
+                                           veering shots that connect:         3.2%
+                                           straight shots that connect:       86.8%
 
 *(Final combined results filled in at Phase 7.)*

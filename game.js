@@ -99,6 +99,16 @@
                               //   HIGHER = grid lands sooner = less time for
                               //   everyone = VOLUME loses harder and
                               //   PRECISION's winning margin shrinks.
+      descentCreep: 0,        // World units per SECOND of steady downward drift,
+                              //   on top of the step drops.
+                              //   The step drops alone are not a reliable clock:
+                              //   clearing the flanks widens the formation's
+                              //   runway, so it turns less often and descends
+                              //   more slowly. A player who kills slowly but
+                              //   steadily can therefore buy unlimited time.
+                              //   This creep is the part of the descent that
+                              //   cannot be bought off. HIGHER = a harder
+                              //   deadline for both characters.
       bottomLine: 556,        // Y at which invaders count as landed. Player loses.
 
       // ---- Invader return fire — IDENTICAL for both characters -------------
@@ -144,6 +154,11 @@
 
       missDriftAmount: 90,       // Lateral drift speed on an inexplicable miss.
       missOnsetRange: [0.10, 0.30], // Straight flight before the drift begins.
+      missRampRate: 6,           // How fast the drift builds once it starts.
+                                 //   Low = a lazy, sad little swerve.
+      missVerticalDrag: 0.35,    // How much upward drive a drifting shot gives
+                                 //   up. 0 = keeps climbing, 1 = stops climbing
+                                 //   and slides sideways out of play.
       missWobble: 2.2,           // Wobble frequency, so misses are not uniform.
 
       shipLagFactor: 0.06,       // 0 = instant response, 1 = very sluggish.
@@ -151,18 +166,35 @@
     },
 
     volume: {
-      fireIntervalMs: 120,       // LOWER = more shots. Does not fix the hit rate.
-      bulletSpeed: 400,
+      fireIntervalMs: 130,       // LOWER = more shots. Does not fix the hit rate.
+      bulletSpeed: 380,
 
       // VOLUME has no homing at all. Every shot is either straight or veers
       // away, and the split is set by this one number.
-      curveAwayProbability: 0.86,// Share of shots that veer off.
+      curveAwayProbability: 0.995,// Share of shots that veer off.
                                  //   HIGHER = VOLUME loses more.
-                                 //   The main accuracy lever.
-      curveMagnitudeRange: [55, 190], // Lateral drift speed of a veering shot.
+                                 //   Measured: the shots that do NOT veer are
+                                 //   worth far more than their share, because a
+                                 //   straight shot from under the grid connects
+                                 //   about three times in four.
+      curveMagnitudeRange: [700, 1400], // Lateral drift speed of a veering shot.
                                  //   Lower values can still accidentally hit.
-      curveOnsetRange: [0.05, 0.28],  // Straight flight before the veer begins.
+      curveOnsetRange: [0.09, 0.22],  // Straight flight before the veer begins.
                                  //   Higher = leaves the gun straighter for longer.
+      curveVerticalDrag: 0.9,    // How much upward drive a veering shot gives
+                                 //   up as it peels away. 0 = keeps climbing
+                                 //   into the grid and blunders into things,
+                                 //   1 = stops climbing entirely and slides out
+                                 //   of play sideways.
+                                 //   HIGHER = VOLUME connects with less, and is
+                                 //   what lets the shot still leave the gun
+                                 //   visibly straight before it goes wrong.
+      curveRampRate: 18,         // How fast the veer builds once it starts.
+                                 //   HIGHER = the shot is gone sideways before
+                                 //   it can blunder into anything, including at
+                                 //   point-blank range when the grid is low.
+                                 //   This is what stops a firehose working by
+                                 //   sheer proximity late in a round.
       curveWobble: 5.5,          // Wobble frequency, so curves look erratic.
 
       shipLagFactor: 0.78,       // 0 = instant response, 1 = very sluggish.
@@ -276,6 +308,8 @@
         homingMaxTurn: cfg.homingMaxTurn,
         driftRange: [cfg.missDriftAmount * 0.7, cfg.missDriftAmount * 1.3],
         onsetRange: cfg.missOnsetRange,
+        ramp: cfg.missRampRate,
+        verticalDrag: cfg.missVerticalDrag,
         wobble: cfg.missWobble
       };
     }
@@ -293,6 +327,8 @@
       homingMaxTurn: 0,
       driftRange: cfg.curveMagnitudeRange,
       onsetRange: cfg.curveOnsetRange,
+      ramp: cfg.curveRampRate,
+      verticalDrag: cfg.curveVerticalDrag,
       wobble: cfg.curveWobble
     };
   }
@@ -431,6 +467,12 @@
       if (state.aliveCount === 0) return;
       var f = state.formation;
 
+      // Steady drift, independent of the marching.
+      if (CI.descentCreep) {
+        f.offY += CI.descentCreep * dt;
+        repositionInvaders();
+      }
+
       // March interval scales with how much of the grid is left.
       var aliveFrac = state.aliveCount / totalInvaders;
       var interval = CI.stepIntervalMin + (CI.stepInterval - CI.stepIntervalMin) * aliveFrac;
@@ -536,7 +578,12 @@
         if (s.age < s.onset) return;                     // leaves the gun straight
         var w = Math.sin(s.wobblePhase + s.age * P.wobble);
         var want = s.driftVx * (0.65 + 0.35 * w);
-        s.vx += (want - s.vx) * 6 * dt;
+        s.vx += (want - s.vx) * P.ramp * dt;
+        // A shot that has gone sideways stops driving upward as hard: the
+        // energy went into the swerve. It slides out of play instead of
+        // climbing on into whatever happens to be above it.
+        var wantVy = -charCfg.bulletSpeed * (1 - P.verticalDrag);
+        s.vy += (wantVy - s.vy) * P.ramp * dt;
       }
       // 'straight' does nothing — it keeps the vx of 0 it was fired with.
     }
