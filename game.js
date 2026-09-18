@@ -95,7 +95,7 @@
       stepIntervalMin: 0.028, // Seconds between march steps with one invader left.
                               //   LOWER = frantic endgame, grid lands sooner.
       stepX: 4,               // World units moved per march step.
-      descentRate: 6.4,       // World units dropped per turn.
+      descentRate: 8.2,       // World units dropped per turn.
                               //   HIGHER = grid lands sooner = less time for
                               //   everyone = VOLUME loses harder and
                               //   PRECISION's winning margin shrinks.
@@ -129,13 +129,13 @@
        ---------------------------------------------------------------------- */
 
     precision: {
-      fireIntervalMs: 1720,      // LOWER = clears faster = PRECISION wins more.
+      fireIntervalMs: 1500,      // LOWER = clears faster = PRECISION wins more.
                                  //   Also the main dial on round length.
       bulletSpeed: 460,          // Higher = less time for the grid to move on.
 
       weights: {                 // Relative odds of each shot behaviour.
-        homing: 66,              //   Raise = higher hit rate = more wins.
-        straight: 26,            //   Straight only hits what is already above,
+        homing: 76,              //   Raise = higher hit rate = more wins.
+        straight: 16,            //   Straight only hits what is already above,
                                  //   and the ship is usually moving, so these
                                  //   land about half the time.
         miss: 8                  //   Raise = lower hit rate = fewer wins.
@@ -162,7 +162,10 @@
       missWobble: 2.2,           // Wobble frequency, so misses are not uniform.
 
       shipLagFactor: 0.06,       // 0 = instant response, 1 = very sluggish.
-      shipOvershoot: 0.10        // 0 = stops dead, 1 = slides way past target.
+      shipOvershoot: 0.10,       // 0 = stops dead, 1 = slides way past target.
+
+      blocker: null              // PRECISION dials rarely, so its number never
+                                 // gets flagged. No blocker.
     },
 
     volume: {
@@ -198,24 +201,38 @@
       curveWobble: 5.5,          // Wobble frequency, so curves look erratic.
 
       shipLagFactor: 0.78,       // 0 = instant response, 1 = very sluggish.
-      shipOvershoot: 0.72        // 0 = stops dead, 1 = slides way past target.
+      shipOvershoot: 0.72,       // 0 = stops dead, 1 = slides way past target.
+
+      blocker: 'spamLikely'      // Names the CONFIG group above. Point PRECISION
+                                 // at it instead and PRECISION gets blocked.
     },
 
-    spamLikely: {                                                  // (phase 5)
-      firstSpawnMs: 7000,        // Delay before the first blocker. Lower = harsher.
-      respawnIntervalRange: [6500, 11000], // Gap between blockers. Lower = harsher.
-      fallSpeed: 260,            // Must exceed invader descent so it arrives first.
-      hoverDurationMs: 5000,     // How long it parks and blocks. Higher = harsher.
+    // The SPAM LIKELY blocker. Which characters get one is decided by the
+    // `blocker` key on each character config below, not by any check on the
+    // character's name: VOLUME dials so much its number gets flagged.
+    spamLikely: {
+      firstSpawnMs: 6000,        // Delay before the first blocker. Lower = harsher.
+      respawnIntervalRange: [2200, 4600], // Gap between blockers. Lower = harsher.
+      fallSpeed: 300,            // Must exceed invader descent so it arrives first.
+      hoverDurationMs: 5500,     // How long it parks and blocks. Higher = harsher.
       exitSpeed: 420,            // How fast it leaves once the hover ends.
-      bandY: 430,                // Y it halts at — between player and invaders.
-      widthPct: 0.44,            // Share of world width it covers. Higher = harsher.
-      height: 34
+      bandY: 496,                // Y it halts at — between player and invaders.
+                                 //   LOWER (higher up the screen) and it stops
+                                 //   mattering once the grid descends past it.
+                                 //   Near the ship it blocks the close-range
+                                 //   window, which is the only range at which a
+                                 //   firehose reliably connects.
+      widthPct: 0.88,            // Share of world width it covers. Higher = harsher.
+                                 //   At this width the ship has one narrow gap
+                                 //   to shoot through, which is the point.
+      height: 30,
+      maxOnScreen: 2             // Pool size. More = overlapping blockers.
     },
 
     limits: {
       // Pool sizes. Generous enough that VOLUME never runs dry, small enough
       // that nothing grows without bound during a long round.
-      playerShots: 220,
+      playerShots: 260,
       enemyShots: 40
     }
   };
@@ -346,6 +363,8 @@
     var charCfg = character === 'volume' ? CONFIG.volume : CONFIG.precision;
     var spring = springFor(charCfg);
     var P = shotProfile(charCfg);
+    // A character only gets blockers if its config names a blocker group.
+    var BL = charCfg.blocker ? CONFIG[charCfg.blocker] : null;
 
     var formationW = (CI.cols - 1) * CI.cellW;
     var originX = (WORLD.w - formationW) / 2;
@@ -374,6 +393,7 @@
 
       fireTimer: 0,
       enemyFireTimer: 0,
+      blockerTimer: BL ? BL.firstSpawnMs / 1000 : Infinity,
 
       stats: {
         shotsFired: 0,
@@ -411,6 +431,15 @@
     }
     for (i = 0; i < CONFIG.limits.enemyShots; i++) {
       state.enemyShots.push({ active: false, x: 0, y: 0, vy: 0 });
+    }
+    if (BL) {
+      for (i = 0; i < BL.maxOnScreen; i++) {
+        state.blockers.push({
+          active: false, x: 0, y: 0,
+          halfWidth: 0, halfHeight: BL.height / 2,
+          mode: 'falling', hoverLeft: 0
+        });
+      }
     }
 
     function takeFrom(pool) {
@@ -600,6 +629,13 @@
 
         if (s.y < -20 || s.x < -20 || s.x > WORLD.w + 20) { s.active = false; continue; }
 
+        // Anything blocked is destroyed here, before it can reach an invader.
+        if (absorbedByBlocker(s)) {
+          s.active = false;
+          state.stats.shotsAbsorbed++;
+          continue;
+        }
+
         for (var k = 0; k < state.invaders.length; k++) {
           var inv = state.invaders[k];
           if (!inv.alive) continue;
@@ -615,6 +651,60 @@
           }
         }
       }
+    }
+
+    /* ---- SPAM LIKELY -------------------------------------------------------
+       Drops from the top faster than the invaders descend, halts at a band
+       between the ship and the grid, hovers there, then falls away. While it
+       is on screen it absorbs every outgoing shot inside its span: nothing
+       behind it can be hit. It is an outbound filter, so it does not stop the
+       invaders' own fire coming the other way.
+       ---------------------------------------------------------------------- */
+    function updateBlockers(dt) {
+      if (!BL) return;
+
+      state.blockerTimer -= dt;
+      if (state.blockerTimer <= 0) {
+        var slot = null;
+        for (var n = 0; n < state.blockers.length; n++) {
+          if (!state.blockers[n].active) { slot = state.blockers[n]; break; }
+        }
+        state.blockerTimer = rng.pair(BL.respawnIntervalRange) / 1000;
+        if (slot) {
+          slot.halfWidth = (WORLD.w * BL.widthPct) / 2;
+          slot.halfHeight = BL.height / 2;
+          slot.x = rng.range(slot.halfWidth, WORLD.w - slot.halfWidth);
+          slot.y = -slot.halfHeight;
+          slot.mode = 'falling';
+          slot.hoverLeft = BL.hoverDurationMs / 1000;
+          slot.active = true;
+        }
+      }
+
+      for (var j = 0; j < state.blockers.length; j++) {
+        var b = state.blockers[j];
+        if (!b.active) continue;
+        if (b.mode === 'falling') {
+          b.y += BL.fallSpeed * dt;
+          if (b.y >= BL.bandY) { b.y = BL.bandY; b.mode = 'hovering'; }
+        } else if (b.mode === 'hovering') {
+          b.hoverLeft -= dt;
+          if (b.hoverLeft <= 0) b.mode = 'leaving';
+        } else {
+          b.y += BL.exitSpeed * dt;
+          if (b.y - b.halfHeight > WORLD.h) b.active = false;
+        }
+      }
+    }
+
+    /* True if this shot just ran into a blocker. */
+    function absorbedByBlocker(s) {
+      for (var j = 0; j < state.blockers.length; j++) {
+        var b = state.blockers[j];
+        if (!b.active) continue;
+        if (overlaps(s.x, s.y, 2, 5, b.x, b.y, b.halfWidth, b.halfHeight)) return true;
+      }
+      return false;
     }
 
     /* ---- Invader fire — identical for both characters --------------------- */
@@ -690,6 +780,7 @@
 
       updateShip(dt);
       updateFormation(dt);
+      updateBlockers(dt);
       updatePlayerFire(dt);
       updatePlayerShots(dt);
       updateEnemyFire(dt);

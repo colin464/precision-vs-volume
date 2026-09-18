@@ -66,9 +66,9 @@
     'use strict';
 
     /* ======================================================================
-       PHASE 2 — core loop.
-       Invader grid, march + descent, shooting, collision, score, lives,
-       win and lose conditions.
+       PHASE 5 — SPAM LIKELY.
+       Invader grid, both character shot models, and the blocker that drops in
+       front of VOLUME and eats everything it fires.
 
        This file is the RENDERER and the SHELL only. All game rules live in
        game.js so the headless tuning harness runs identical logic.
@@ -323,6 +323,29 @@
         if (sh.active) ctx.fillRect(Math.round(sh.x) - 1.5, Math.round(sh.y) - 5, 3, 10);
       }
 
+      // SPAM LIKELY — drawn over the shots, so you can see them being eaten.
+      for (j = 0; j < s.blockers.length; j++) {
+        var bl = s.blockers[j];
+        if (!bl.active) continue;
+        var bx = Math.round(bl.x - bl.halfWidth);
+        var by = Math.round(bl.y - bl.halfHeight);
+        var bw = Math.round(bl.halfWidth * 2);
+        var bh = Math.round(bl.halfHeight * 2);
+
+        ctx.fillStyle = '#e9edf2';
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = '#0b0f14';
+        ctx.fillRect(bx + 2, by + 2, bw - 4, 2);
+        ctx.fillRect(bx + 2, by + bh - 4, bw - 4, 2);
+
+        ctx.fillStyle = '#0b0f14';
+        ctx.font = 'bold 15px ui-monospace, Menlo, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('SPAM LIKELY', bl.x, bl.y + 1);
+        ctx.textBaseline = 'top';
+      }
+
       // Enemy shots.
       ctx.fillStyle = getVar('--bone');
       for (j = 0; j < s.enemyShots.length; j++) {
@@ -382,9 +405,10 @@
       ctx.textAlign = 'left';
       ctx.fillText('seed ' + seedLabel + '   left ' + s.aliveCount, 10, H - 30);
       ctx.fillText('t ' + s.elapsed.toFixed(1) + 's   ' + fps + 'fps   shots ' +
-                   s.stats.shotsFired + '/' + s.stats.shotsHit, 10, H - 18);
+                   s.stats.shotsFired + '/' + s.stats.shotsHit +
+                   '   blocked ' + s.stats.shotsAbsorbed, 10, H - 18);
       ctx.textAlign = 'right';
-      ctx.fillText('phase 4 — volume', W - 10, H - 18);
+      ctx.fillText('phase 5 — spam likely', W - 10, H - 18);
 
       // Scanlines over the top, for the CRT read.
       ctx.fillStyle = 'rgba(0,0,0,0.20)';

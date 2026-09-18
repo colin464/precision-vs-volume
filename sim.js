@@ -44,7 +44,13 @@
     // Horizontal distance at which a bullet stops feeling dangerous.
     dangerRadius: 40,
     // How much it values not being shot versus being lined up on a target.
-    dangerWeight: 9
+    dangerWeight: 9,
+    // How much it dislikes standing where its own shots are being eaten. A
+    // player watching a SPAM LIKELY bar swallow everything slides out from
+    // under it; this is that instinct, not foresight.
+    blockedWeight: 26,
+    // How far past the edge of a blocker it wants to be before it settles.
+    blockedMargin: 12
   };
 
   /* Picks where to stand: close to something worth shooting, away from
@@ -77,7 +83,14 @@
       threats.push({ x: b.x, tti: tti });
     }
 
-    // 3. Weigh up standing positions and take the best compromise.
+    // 3. Note anything currently eating our shots.
+    var walls = [];
+    for (var w = 0; w < s.blockers.length; w++) {
+      var bl = s.blockers[w];
+      if (bl.active && bl.y > 0) walls.push(bl);
+    }
+
+    // 4. Weigh up standing positions and take the best compromise.
     var margin = PVV.CONFIG.world.shipMargin;
     var lo = margin, hi = PVV.WORLD.w - margin;
     var bestX = ship.x, bestCost = Infinity;
@@ -91,6 +104,11 @@
         var urgency = (AUTOPILOT.dangerHorizonSec - threats[t].tti) /
                       AUTOPILOT.dangerHorizonSec;
         cost += near * urgency * AUTOPILOT.dangerWeight;
+      }
+      for (var u = 0; u < walls.length; u++) {
+        var inside = walls[u].halfWidth + AUTOPILOT.blockedMargin -
+                     Math.abs(walls[u].x - x);
+        if (inside > 0) cost += inside * AUTOPILOT.blockedWeight;
       }
       if (cost < bestCost) { bestCost = cost; bestX = x; }
     }

@@ -144,12 +144,12 @@ direction moves the outcome.
   - [x] Curve-away misses, erratic not uniform
   - [x] Degraded ship handling (lag + overshoot)
   - [x] Commit
-- [ ] **Phase 5 — SPAM LIKELY**
-  - [ ] Drop from top, faster than invader descent
-  - [ ] Halt at band, hover 4–6s
-  - [ ] Absorb every shot within horizontal span
-  - [ ] Randomized respawn intervals and X positions
-  - [ ] Commit
+- [x] **Phase 5 — SPAM LIKELY**
+  - [x] Drop from top, faster than invader descent
+  - [x] Halt at band, hover 4–6s
+  - [x] Absorb every shot within horizontal span
+  - [x] Randomized respawn intervals and X positions
+  - [x] Commit
 - [ ] **Phase 6 — Shell**
   - [ ] Character select with taglines
   - [ ] Win and loss end screens, replay path
@@ -173,7 +173,28 @@ direction moves the outcome.
 
 ## 8. Deviations from plan
 
-**Phase 4 — VOLUME misses beautifully and still wins 100%. Open problem.**
+**Phase 5 — the Phase 4 problem is solved, and SPAM LIKELY is what solved it.**
+The diagnosis was right: the blocker's *height* turned out to be the single
+most powerful number in the game. Parked high (bandY 430-460) it barely moves
+the result, because the grid soon descends past it. Parked low, just above the
+ship (bandY 496), it sits in the close-range window — the only range at which a
+firehose reliably connects — and VOLUME collapses.
+
+    bandY 460, width 0.46  ->  VOLUME wins 98%
+    bandY 496, width 0.46  ->  VOLUME wins 73%
+    bandY 496, width 0.88  ->  VOLUME wins  1%
+
+It is also very wide (88% of the screen) and hovers 5.5s at a time, so VOLUME
+spends much of the round with one narrow gap to shoot through. That is the
+point of the thing. PRECISION never sees one: the `blocker` key on its config
+is null, because it does not dial enough to get flagged. Nothing checks the
+character's name — point PRECISION's config at the blocker group and PRECISION
+gets blocked instead.
+
+The fallback of reverting to Phase 2's fixed formation bounds was NOT needed.
+The arcade descent Colin asked for stays.
+
+**Phase 4 — VOLUME missed beautifully and still won 100%.** *(resolved in Phase 5)*
 Its shots now genuinely miss: 96.9% of veering shots fly off the side of the
 screen without touching anything, and only 3.2% connect. That was the goal and
 it works. VOLUME still clears the grid every time, for a reason that no amount
@@ -281,4 +302,20 @@ Target was >= 95% and 90s +/- 25%. Both met.
                                            veering shots that connect:         3.2%
                                            straight shots that connect:       86.8%
 
-*(Final combined results filled in at Phase 7.)*
+### Phase 5 — SPAM LIKELY in. Both acceptance thresholds met.
+
+    PRECISION   (200 seeded runs)          VOLUME   (200 seeded runs)
+      win rate ......... 96.0%   PASS        win rate ......... 1.0%    PASS
+      median round ..... 74.6s   PASS        median round ..... 101.4s  PASS
+      median shots ..... 49                  median shots ..... 776
+      hit rate ......... 69.6%               hit rate ......... 1.8%
+      invaders left .... 0                   invaders left .... 22
+      outcomes ......... cleared 192,        absorbed by SPAM . 48.3%
+                         landed 8            outcomes ......... landed 196,
+                                                                lives 2, cleared 2
+
+Validated on three independent seed ranges (1-200, 501-700, 9001-9200):
+worst-case PRECISION 96.0%, worst-case VOLUME 1.0%. Targets: >= 95% and <= 2%.
+Round lengths both inside 90s +/- 25% (67.5 - 112.5s).
+
+*(Final results re-confirmed at Phase 7.)*
