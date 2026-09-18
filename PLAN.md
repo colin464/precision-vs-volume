@@ -118,7 +118,7 @@ direction moves the outcome.
 ## 7. Phase checklist
 
 - [x] **Phase 0 — Sign-off on this plan**
-- [ ] **Phase 1 — Skeleton**
+- [x] **Phase 1 — Skeleton**
   - [x] Canvas + DPR scaling + resize handling
   - [x] Safe-area insets
   - [x] Fixed-timestep loop with accumulator
@@ -127,11 +127,11 @@ direction moves the outcome.
   - [x] No scroll / zoom / rubber-band / text select
   - [x] Commit + push to new GitHub repo
 - [ ] **Phase 2 — Core loop**
-  - [ ] Invader grid, step-march + descent
-  - [ ] Straight shots, projectile pooling
-  - [ ] Collision detection
-  - [ ] Score, lives, invader return fire
-  - [ ] Win condition (grid cleared) and loss conditions (bottom line, lives out)
+  - [x] Invader grid, step-march + descent
+  - [x] Straight shots, projectile pooling
+  - [x] Collision detection
+  - [x] Score, lives, invader return fire
+  - [x] Win condition (grid cleared) and loss conditions (bottom line, lives out)
   - [ ] Commit
 - [ ] **Phase 3 — PRECISION**
   - [ ] Weighted shot roll: homing / straight / inexplicable miss
@@ -173,7 +173,21 @@ direction moves the outcome.
 
 ## 8. Deviations from plan
 
-*(Recorded here as they happen, with reasons.)*
+**Phase 2 — formation turn bounds are fixed, not live.**
+Classic Space Invaders turns the formation around when the *surviving* invaders
+reach a wall, so killing the edge columns slows the descent. That would make the
+descent clock depend on how many you have killed, which would hand PRECISION a
+second advantage and make "both rounds ~90s" impossible to hit. The formation
+instead turns at bounds fixed by the full 5x7 grid. Descent is therefore a pure
+shared clock: it lands at the same moment in every round, for both characters,
+regardless of score. Verified: **grid lands at 98.8s** with no shots fired at all.
+
+**Phase 2 — each character already uses its own fire rate.**
+The plan called Phase 2 "a generic Space Invaders". Shot *behaviour* is
+identical for both (straight shots only) as intended, but rather than write a
+throwaway shared fire rate I let each character use its own
+`fireIntervalMs` from the start. Phases 3 and 4 add behaviour on top of the same
+spawn path instead of replacing it.
 
 ---
 

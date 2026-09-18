@@ -14,9 +14,11 @@
     --grid:      #131a22;
     --amber:     #ffc247;
     --green:     #46e07a;
+    --cyan:      #8be9ff;
     --precision: #ff2b3d;   /* bright red — sharp, engineered */
     --volume:    #b44cff;   /* bright purple — bubbly, cheap */
     --dim:       #4e5a68;
+    --bone:      #c9d4e0;
   }
 
   * { box-sizing: border-box; }
@@ -64,10 +66,9 @@
     'use strict';
 
     /* ======================================================================
-       PHASE 1 — skeleton.
-       Canvas + devicePixelRatio scaling, fixed-timestep loop, seeded RNG,
-       pointer-drag ship movement, and a locked-down page that will not
-       scroll, zoom or rubber-band.
+       PHASE 2 — core loop.
+       Invader grid, march + descent, shooting, collision, score, lives,
+       win and lose conditions.
 
        This file is the RENDERER and the SHELL only. All game rules live in
        game.js so the headless tuning harness runs identical logic.
@@ -75,15 +76,21 @@
 
     var W = PVV.WORLD.w, H = PVV.WORLD.h;
     var STEP = PVV.STEP;
+    var CI = PVV.CONFIG.invaders;
 
     /* ---- URL params: ?seed=123 for a reproducible run, ?char= to preview --- */
     var params = new URLSearchParams(location.search);
     var seedParam = params.get('seed');
     var charParam = params.get('char') === 'volume' ? 'volume' : 'precision';
-    var seed = seedParam != null ? seedParam : String(Date.now());
 
-    var game = PVV.createGame({ character: charParam, seed: seed });
-    var seedLabel = seedParam != null ? seedParam : String(seed);
+    var game, seedLabel;
+
+    function newRound() {
+      var seed = seedParam != null ? seedParam : String(Date.now());
+      seedLabel = String(seed);
+      game = PVV.createGame({ character: charParam, seed: seed });
+    }
+    newRound();
 
     /* ======================================================================
        CANVAS + DEVICE PIXEL RATIO
@@ -111,15 +118,10 @@
     }
 
     window.addEventListener('resize', resize);
-    window.addEventListener('orientationchange', function () {
-      setTimeout(resize, 120);
-    });
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', resize);
-    }
+    window.addEventListener('orientationchange', function () { setTimeout(resize, 120); });
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
     resize();
 
-    /* Map a client point to logical world coordinates. */
     function toWorldX(clientX) {
       var rect = canvas.getBoundingClientRect();
       return (clientX - rect.left - view.offX) / view.scale;
@@ -131,12 +133,18 @@
     var pointerActive = false;
     var activePointerId = null;
 
+    function handleTap() {
+      // Temporary until Phase 6 puts a real end screen in.
+      if (game.state.phase !== 'playing') newRound();
+    }
+
     canvas.addEventListener('pointerdown', function (e) {
       pointerActive = true;
       activePointerId = e.pointerId;
       if (canvas.setPointerCapture) {
         try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
       }
+      handleTap();
       game.setTargetX(toWorldX(e.clientX));
       e.preventDefault();
     }, { passive: false });
@@ -145,27 +153,24 @@
       if (pointerActive && e.pointerId === activePointerId) {
         game.setTargetX(toWorldX(e.clientX));
       } else if (e.pointerType === 'mouse') {
-        // Desktop convenience: follow the mouse without holding the button.
-        game.setTargetX(toWorldX(e.clientX));
+        game.setTargetX(toWorldX(e.clientX));   // desktop: follow the mouse
       }
       e.preventDefault();
     }, { passive: false });
 
     function endPointer(e) {
-      if (e.pointerId === activePointerId) {
-        pointerActive = false;
-        activePointerId = null;
-      }
+      if (e.pointerId === activePointerId) { pointerActive = false; activePointerId = null; }
     }
     canvas.addEventListener('pointerup', endPointer);
     canvas.addEventListener('pointercancel', endPointer);
 
     /* Desktop convenience only — the game is designed for drag. */
     var keyLeft = false, keyRight = false;
-    var KEY_SPEED = 320; // world units/sec of target movement
+    var KEY_SPEED = 320;
     window.addEventListener('keydown', function (e) {
       if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') keyLeft = true;
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keyRight = true;
+      if (e.key === ' ' || e.key === 'Enter') handleTap();
     });
     window.addEventListener('keyup', function (e) {
       if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') keyLeft = false;
@@ -176,14 +181,12 @@
     ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (t) {
       document.addEventListener(t, function (e) { e.preventDefault(); }, { passive: false });
     });
-    document.addEventListener('touchmove', function (e) {
-      e.preventDefault();
-    }, { passive: false });
+    document.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
     document.addEventListener('dblclick', function (e) { e.preventDefault(); }, { passive: false });
     document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
     /* ======================================================================
-       PIXEL SPRITES
+       PIXEL SPRITES — 11 x 8 cells
        ====================================================================== */
     // PRECISION — a sharp, symmetrical dart. Reads as engineered.
     var SHIP_PRECISION = [
@@ -209,18 +212,38 @@
       '..X.....X..'
     ];
 
+    // Invaders: three families, two animation frames each. The formation
+    // flips frame on every march step, which is what gives the classic waddle.
+    var INVADERS = [
+      [ // type 0 — top row
+        ['....XXX....','...XXXXX...','..XXXXXXX..','..XX.X.XX..',
+         '..XXXXXXX..','...X.X.X...','..X.X.X.X..','...X...X...'],
+        ['....XXX....','...XXXXX...','..XXXXXXX..','..XX.X.XX..',
+         '..XXXXXXX..','...X.X.X...','..X.....X..','.X.......X.']
+      ],
+      [ // type 1 — middle rows
+        ['..X.....X..','...X...X...','..XXXXXXX..','.XX.XXX.XX.',
+         'XXXXXXXXXXX','X.XXXXXXX.X','X.X.....X.X','...XX.XX...'],
+        ['..X.....X..','X..X...X..X','X.XXXXXXX.X','XXX.XXX.XXX',
+         'XXXXXXXXXXX','.XXXXXXXXX.','..X.....X..','.X.......X.']
+      ],
+      [ // type 2 — bottom rows
+        ['...XXXXX...','.XXXXXXXXX.','XXXXXXXXXXX','XXX.XXX.XXX',
+         'XXXXXXXXXXX','..XX.X.XX..','.XX.XXX.XX.','XX.......XX'],
+        ['...XXXXX...','.XXXXXXXXX.','XXXXXXXXXXX','XXX.XXX.XXX',
+         'XXXXXXXXXXX','...XX.XX...','..XX.X.XX..','.X.X...X.X.']
+      ]
+    ];
+
     var PIXEL = 2.6; // world units per sprite pixel
 
     function drawSprite(rows, cx, cy, color, px) {
       px = px || PIXEL;
-      var w = rows[0].length * px;
-      var h = rows.length * px;
-      var x0 = cx - w / 2;
-      var y0 = cy - h / 2;
+      var x0 = cx - (rows[0].length * px) / 2;
+      var y0 = cy - (rows.length * px) / 2;
       ctx.fillStyle = color;
       for (var r = 0; r < rows.length; r++) {
-        var row = rows[r];
-        var runStart = -1;
+        var row = rows[r], runStart = -1;
         for (var c = 0; c <= row.length; c++) {
           var on = c < row.length && row[c] !== '.';
           if (on && runStart < 0) runStart = c;
@@ -235,10 +258,6 @@
     /* ======================================================================
        RENDER
        ====================================================================== */
-    function charColor() {
-      return game.state.character === 'volume'
-        ? getVar('--volume') : getVar('--precision');
-    }
     var varCache = {};
     function getVar(name) {
       if (!varCache[name]) {
@@ -247,22 +266,24 @@
       }
       return varCache[name];
     }
+    function charColor() {
+      return game.state.character === 'volume' ? getVar('--volume') : getVar('--precision');
+    }
+    var INVADER_COLORS = ['--cyan', '--green', '--amber'];
 
     function render() {
       var s = game.state;
+      var j;
 
-      // Cabinet background fills the whole canvas.
       ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
       ctx.fillStyle = getVar('--bg');
       ctx.fillRect(0, 0, view.cssW, view.cssH);
 
-      // Everything below is in logical world units.
       ctx.setTransform(
         view.dpr * view.scale, 0, 0, view.dpr * view.scale,
         view.dpr * view.offX,  view.dpr * view.offY
       );
 
-      // Screen area.
       ctx.fillStyle = getVar('--field');
       ctx.fillRect(0, 0, W, H);
 
@@ -274,18 +295,55 @@
       for (var gy = 0; gy <= H; gy += 40) { ctx.moveTo(0, gy); ctx.lineTo(W, gy); }
       ctx.stroke();
 
-      // The line invaders must not cross (drawn from Phase 2 onward too).
-      ctx.strokeStyle = 'rgba(255,194,71,0.28)';
+      // The line invaders must not cross.
+      ctx.strokeStyle = 'rgba(255,194,71,0.30)';
+      ctx.lineWidth = 1;
       ctx.setLineDash([6, 6]);
       ctx.beginPath();
-      ctx.moveTo(0, PVV.CONFIG.invaders.bottomLine);
-      ctx.lineTo(W, PVV.CONFIG.invaders.bottomLine);
+      ctx.moveTo(0, CI.bottomLine);
+      ctx.lineTo(W, CI.bottomLine);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Ship.
-      var sprite = s.character === 'volume' ? SHIP_VOLUME : SHIP_PRECISION;
-      drawSprite(sprite, Math.round(s.ship.x), Math.round(s.ship.y), charColor());
+      // Invaders.
+      for (j = 0; j < s.invaders.length; j++) {
+        var inv = s.invaders[j];
+        if (!inv.alive) continue;
+        drawSprite(
+          INVADERS[inv.type][s.formation.frame],
+          Math.round(inv.x), Math.round(inv.y),
+          getVar(INVADER_COLORS[inv.type])
+        );
+      }
+
+      // Player shots.
+      ctx.fillStyle = charColor();
+      for (j = 0; j < s.shots.length; j++) {
+        var sh = s.shots[j];
+        if (sh.active) ctx.fillRect(Math.round(sh.x) - 1.5, Math.round(sh.y) - 5, 3, 10);
+      }
+
+      // Enemy shots.
+      ctx.fillStyle = getVar('--bone');
+      for (j = 0; j < s.enemyShots.length; j++) {
+        var eb = s.enemyShots[j];
+        if (eb.active) ctx.fillRect(Math.round(eb.x) - 1.5, Math.round(eb.y) - 6, 3, 12);
+      }
+
+      // Ship — blinks while stunned.
+      var stunned = s.stun > 0;
+      if (!stunned || Math.floor(s.elapsed * 14) % 2 === 0) {
+        drawSprite(
+          s.character === 'volume' ? SHIP_VOLUME : SHIP_PRECISION,
+          Math.round(s.ship.x), Math.round(s.ship.y), charColor()
+        );
+      }
+
+      // Hit flash.
+      if (s.flashHit > 0) {
+        ctx.fillStyle = 'rgba(255,255,255,' + (0.30 * (s.flashHit / 0.35)).toFixed(3) + ')';
+        ctx.fillRect(0, 0, W, H);
+      }
 
       // HUD.
       ctx.fillStyle = getVar('--amber');
@@ -294,19 +352,39 @@
       ctx.textAlign = 'left';
       ctx.fillText('SCORE ' + String(s.score).padStart(5, '0'), 10, 10);
       ctx.textAlign = 'right';
-      ctx.fillText('LIVES ' + s.lives, W - 10, 10);
+      ctx.fillText('LIVES ' + Math.max(0, s.lives), W - 10, 10);
       ctx.textAlign = 'center';
       ctx.fillStyle = charColor();
       ctx.fillText(s.character.toUpperCase(), W / 2, 10);
 
-      // Phase-1 dev readout.
+      // End state — temporary until Phase 6.
+      if (s.phase !== 'playing') {
+        ctx.fillStyle = 'rgba(7,8,12,0.82)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = s.phase === 'won' ? getVar('--green') : getVar('--precision');
+        ctx.font = '30px ui-monospace, Menlo, monospace';
+        ctx.fillText(s.phase === 'won' ? 'CLEARED' : 'OVERRUN', W / 2, H / 2 - 30);
+        ctx.fillStyle = getVar('--amber');
+        ctx.font = '13px ui-monospace, Menlo, monospace';
+        ctx.fillText('SCORE ' + s.score + '   ' + s.elapsed.toFixed(1) + 's', W / 2, H / 2 + 6);
+        ctx.fillStyle = getVar('--dim');
+        ctx.font = '11px ui-monospace, Menlo, monospace';
+        ctx.fillText(s.lossReason ? 'reason: ' + s.lossReason : 'grid cleared', W / 2, H / 2 + 28);
+        ctx.fillText('tap to play again', W / 2, H / 2 + 50);
+        ctx.textBaseline = 'top';
+      }
+
+      // Dev readout — goes away in Phase 6.
       ctx.fillStyle = getVar('--dim');
       ctx.font = '10px ui-monospace, Menlo, monospace';
       ctx.textAlign = 'left';
-      ctx.fillText('seed ' + seedLabel, 10, H - 30);
-      ctx.fillText('t ' + s.elapsed.toFixed(1) + 's   ' + fps + 'fps', 10, H - 18);
+      ctx.fillText('seed ' + seedLabel + '   left ' + s.aliveCount, 10, H - 30);
+      ctx.fillText('t ' + s.elapsed.toFixed(1) + 's   ' + fps + 'fps   shots ' +
+                   s.stats.shotsFired + '/' + s.stats.shotsHit, 10, H - 18);
       ctx.textAlign = 'right';
-      ctx.fillText('phase 1 — skeleton', W - 10, H - 18);
+      ctx.fillText('phase 2 — core loop', W - 10, H - 18);
 
       // Scanlines over the top, for the CRT read.
       ctx.fillStyle = 'rgba(0,0,0,0.20)';
@@ -335,7 +413,7 @@
     var accumulator = 0;
     var lastTime = 0;
     var fps = 0, fpsFrames = 0, fpsClock = 0;
-    var MAX_STEPS_PER_FRAME = 300;   // guards against a huge catch-up spiral
+    var MAX_STEPS_PER_FRAME = 300;
 
     function frame(now) {
       requestAnimationFrame(frame);
@@ -343,12 +421,8 @@
       if (!lastTime) { lastTime = now; return; }
       var delta = (now - lastTime) / 1000;
       lastTime = now;
+      if (delta > 0.25) delta = 0.25;   // a backgrounded tab must not fast-forward
 
-      // A backgrounded tab can hand us a huge delta. Drop it rather than
-      // fast-forwarding the round.
-      if (delta > 0.25) delta = 0.25;
-
-      // Keyboard nudges the target in real time, not per step.
       if (keyLeft)  game.nudgeTarget(-KEY_SPEED * delta);
       if (keyRight) game.nudgeTarget( KEY_SPEED * delta);
 
@@ -362,10 +436,7 @@
       if (steps >= MAX_STEPS_PER_FRAME) accumulator = 0;
 
       fpsFrames++; fpsClock += delta;
-      if (fpsClock >= 0.5) {
-        fps = Math.round(fpsFrames / fpsClock);
-        fpsFrames = 0; fpsClock = 0;
-      }
+      if (fpsClock >= 0.5) { fps = Math.round(fpsFrames / fpsClock); fpsFrames = 0; fpsClock = 0; }
 
       render();
     }
