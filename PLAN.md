@@ -150,12 +150,12 @@ direction moves the outcome.
   - [x] Absorb every shot within horizontal span
   - [x] Randomized respawn intervals and X positions
   - [x] Commit
-- [ ] **Phase 6 — Shell**
-  - [ ] Character select with taglines
-  - [ ] Win and loss end screens, replay path
-  - [ ] HUD: score, lives, active character
-  - [ ] Retro visual pass — pixel sprites, scanlines, palette
-  - [ ] Commit
+- [x] **Phase 6 — Shell**
+  - [x] Character select with taglines
+  - [x] Win and loss end screens, replay path
+  - [x] HUD: score, lives, active character
+  - [x] Retro visual pass — pixel sprites, scanlines, palette
+  - [x] Commit
 - [ ] **Phase 7 — Tuning & QA**
   - [ ] `sim.js` headless harness, autopilot, N seeds per character
   - [ ] Reports win rate, median length, shots, hit rate, absorbed share
@@ -168,6 +168,26 @@ direction moves the outcome.
   - [ ] No scroll/zoom leakage, no frame-rate dependence, no memory growth
   - [ ] Rigging-policy grep clean
   - [ ] Final commit + push
+
+---
+
+## 7a. Copy (Colin to redline)
+
+Character select:
+
+| | PRECISION | VOLUME |
+|---|---|---|
+| tagline | FIRES RARELY. RARELY MISSES. | NEVER STOPS FIRING. |
+| blurb | A slow, deliberate cadence. / Every shot is chosen. | Ten times the shots. / Out-work the whole grid. |
+
+Both descriptions are true and neither hints at the outcome. VOLUME is written
+to be the tempting choice.
+
+End screens: **GRID CLEARED** / **OVERRUN**, then SCORE, TIME, SHOTS FIRED,
+SHOTS CONNECTED (with the percentage), BLOCKED BY SPAM where it applies, and
+INVADERS LEFT on a loss. The stat block is where the point lands without a word
+of commentary: a losing VOLUME round reads roughly *776 fired, 14 connected,
+375 blocked, 22 of 35 left*.
 
 ---
 

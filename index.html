@@ -24,10 +24,8 @@
   * { box-sizing: border-box; }
 
   html, body {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    width: 100%;
+    margin: 0; padding: 0;
+    height: 100%; width: 100%;
     overflow: hidden;
     overscroll-behavior: none;
     background: var(--bg);
@@ -36,13 +34,11 @@
     -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
-    position: fixed;
-    inset: 0;
+    position: fixed; inset: 0;
   }
 
   #stage {
-    position: absolute;
-    inset: 0;
+    position: absolute; inset: 0;
     padding: env(safe-area-inset-top) env(safe-area-inset-right)
              env(safe-area-inset-bottom) env(safe-area-inset-left);
     display: block;
@@ -50,8 +46,7 @@
 
   canvas {
     display: block;
-    width: 100%;
-    height: 100%;
+    width: 100%; height: 100%;
     touch-action: none;          /* no scroll, no pinch-zoom, no double-tap zoom */
     image-rendering: pixelated;
   }
@@ -66,38 +61,70 @@
     'use strict';
 
     /* ======================================================================
-       PHASE 5 — SPAM LIKELY.
-       Invader grid, both character shot models, and the blocker that drops in
-       front of VOLUME and eats everything it fires.
+       PHASE 6 — the shell.
+       Character select, the round itself, end screens, replay.
 
-       This file is the RENDERER and the SHELL only. All game rules live in
-       game.js so the headless tuning harness runs identical logic.
+       This file is the RENDERER and the SHELL only. Every game rule lives in
+       game.js, so the headless tuning harness runs identical logic.
        ====================================================================== */
 
     var W = PVV.WORLD.w, H = PVV.WORLD.h;
     var STEP = PVV.STEP;
     var CI = PVV.CONFIG.invaders;
 
-    /* ---- URL params: ?seed=123 for a reproducible run, ?char= to preview --- */
+    /* ---- URL params -------------------------------------------------------
+       ?seed=123     reproduce an exact round
+       ?char=volume  skip straight past the select screen
+       ?debug=1      show the seed and shot counters while playing
+       -------------------------------------------------------------------- */
     var params = new URLSearchParams(location.search);
     var seedParam = params.get('seed');
-    var charParam = params.get('char') === 'volume' ? 'volume' : 'precision';
+    var charParam = params.get('char');
+    var debug = params.get('debug') === '1';
 
-    var game, seedLabel;
+    var CHARACTERS = [
+      {
+        id: 'precision',
+        name: 'PRECISION',
+        tagline: 'FIRES RARELY. RARELY MISSES.',
+        blurb: ['A slow, deliberate cadence.', 'Every shot is chosen.'],
+        colorVar: '--precision'
+      },
+      {
+        id: 'volume',
+        name: 'VOLUME',
+        tagline: 'NEVER STOPS FIRING.',
+        blurb: ['Ten times the shots.', 'Out-work the whole grid.'],
+        colorVar: '--volume'
+      }
+    ];
 
-    function newRound() {
+    var screen = 'select';          // 'select' | 'play' | 'end'
+    var game = null;
+    var seedLabel = '';
+    var selectClock = 0;
+    var endClock = 0;
+
+    function startRound(characterId) {
       var seed = seedParam != null ? seedParam : String(Date.now());
       seedLabel = String(seed);
-      game = PVV.createGame({ character: charParam, seed: seed });
+      game = PVV.createGame({ character: characterId, seed: seed });
+      screen = 'play';
+      accumulator = 0;
     }
-    newRound();
+
+    function backToSelect() {
+      screen = 'select';
+      game = null;
+      selectClock = 0;
+      hoverCard = -1;
+    }
 
     /* ======================================================================
        CANVAS + DEVICE PIXEL RATIO
        ====================================================================== */
     var canvas = document.getElementById('screen');
     var ctx = canvas.getContext('2d', { alpha: false });
-
     var view = { scale: 1, offX: 0, offY: 0, cssW: 0, cssH: 0, dpr: 1 };
 
     function resize() {
@@ -105,11 +132,8 @@
       var dpr = Math.min(window.devicePixelRatio || 1, 3);
       var cssW = Math.max(1, Math.round(rect.width));
       var cssH = Math.max(1, Math.round(rect.height));
-
       canvas.width  = Math.round(cssW * dpr);
       canvas.height = Math.round(cssH * dpr);
-
-      // Letterbox the fixed logical playfield inside whatever space we have.
       var scale = Math.min(cssW / W, cssH / H);
       view.scale = scale;
       view.offX = (cssW - W * scale) / 2;
@@ -122,39 +146,62 @@
     if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
     resize();
 
-    function toWorldX(clientX) {
+    function toWorld(clientX, clientY) {
       var rect = canvas.getBoundingClientRect();
-      return (clientX - rect.left - view.offX) / view.scale;
+      return {
+        x: (clientX - rect.left - view.offX) / view.scale,
+        y: (clientY - rect.top  - view.offY) / view.scale
+      };
     }
+
+    /* ======================================================================
+       SELECT-SCREEN LAYOUT (world units) — shared by drawing and hit-testing
+       ====================================================================== */
+    var CARD = { x: 26, w: W - 52, h: 150, y0: 212, gap: 26 };
+    function cardRect(i) {
+      return { x: CARD.x, y: CARD.y0 + i * (CARD.h + CARD.gap), w: CARD.w, h: CARD.h };
+    }
+    function cardAt(p) {
+      for (var i = 0; i < CHARACTERS.length; i++) {
+        var r = cardRect(i);
+        if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) return i;
+      }
+      return -1;
+    }
+    var hoverCard = -1;
 
     /* ======================================================================
        INPUT — Pointer Events only. One code path for touch, pen and mouse.
        ====================================================================== */
-    var pointerActive = false;
-    var activePointerId = null;
+    var pointerActive = false, activePointerId = null;
 
-    function handleTap() {
-      // Temporary until Phase 6 puts a real end screen in.
-      if (game.state.phase !== 'playing') newRound();
+    function handlePress(p) {
+      if (screen === 'select') {
+        var i = cardAt(p);
+        if (i >= 0) startRound(CHARACTERS[i].id);
+        return true;
+      }
+      if (screen === 'end' && endClock > 0.7) { backToSelect(); return true; }
+      return false;
     }
 
     canvas.addEventListener('pointerdown', function (e) {
+      var p = toWorld(e.clientX, e.clientY);
       pointerActive = true;
       activePointerId = e.pointerId;
       if (canvas.setPointerCapture) {
         try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
       }
-      handleTap();
-      game.setTargetX(toWorldX(e.clientX));
+      if (!handlePress(p) && screen === 'play') game.setTargetX(p.x);
       e.preventDefault();
     }, { passive: false });
 
     canvas.addEventListener('pointermove', function (e) {
-      if (pointerActive && e.pointerId === activePointerId) {
-        game.setTargetX(toWorldX(e.clientX));
-      } else if (e.pointerType === 'mouse') {
-        game.setTargetX(toWorldX(e.clientX));   // desktop: follow the mouse
-      }
+      var p = toWorld(e.clientX, e.clientY);
+      if (screen === 'select') { hoverCard = cardAt(p); return; }
+      if (screen !== 'play') return;
+      if (pointerActive && e.pointerId === activePointerId) game.setTargetX(p.x);
+      else if (e.pointerType === 'mouse') game.setTargetX(p.x);   // desktop: follow the mouse
       e.preventDefault();
     }, { passive: false });
 
@@ -170,7 +217,10 @@
     window.addEventListener('keydown', function (e) {
       if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') keyLeft = true;
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keyRight = true;
-      if (e.key === ' ' || e.key === 'Enter') handleTap();
+      if (e.key === '1' && screen === 'select') startRound('precision');
+      if (e.key === '2' && screen === 'select') startRound('volume');
+      if ((e.key === ' ' || e.key === 'Enter') && screen === 'end' && endClock > 0.7) backToSelect();
+      if (e.key === 'Escape' && screen !== 'select') backToSelect();
     });
     window.addEventListener('keyup', function (e) {
       if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') keyLeft = false;
@@ -188,54 +238,32 @@
     /* ======================================================================
        PIXEL SPRITES — 11 x 8 cells
        ====================================================================== */
-    // PRECISION — a sharp, symmetrical dart. Reads as engineered.
     var SHIP_PRECISION = [
-      '.....X.....',
-      '....XXX....',
-      '....XXX....',
-      '...XXXXX...',
-      '..XXXXXXX..',
-      '.XXXXXXXXX.',
-      'XX.XXXXX.XX',
-      'X...XXX...X'
+      '.....X.....','....XXX....','....XXX....','...XXXXX...',
+      '..XXXXXXX..','.XXXXXXXXX.','XX.XXXXX.XX','X...XXX...X'
     ];
-
-    // VOLUME — a bulbous, slightly lopsided blob. Reads as cheap.
     var SHIP_VOLUME = [
-      '...XX.XX...',
-      '..XXXXXXX..',
-      '.XXXXXXXXXX',
-      'XXXXXXXXXXX',
-      'XXXXXXXXXXX',
-      '.XXXXXXXXX.',
-      '..XX.X.XX..',
-      '..X.....X..'
+      '...XX.XX...','..XXXXXXX..','.XXXXXXXXXX','XXXXXXXXXXX',
+      'XXXXXXXXXXX','.XXXXXXXXX.','..XX.X.XX..','..X.....X..'
     ];
+    var SHIPS = { precision: SHIP_PRECISION, volume: SHIP_VOLUME };
 
-    // Invaders: three families, two animation frames each. The formation
-    // flips frame on every march step, which is what gives the classic waddle.
     var INVADERS = [
-      [ // type 0 — top row
-        ['....XXX....','...XXXXX...','..XXXXXXX..','..XX.X.XX..',
-         '..XXXXXXX..','...X.X.X...','..X.X.X.X..','...X...X...'],
-        ['....XXX....','...XXXXX...','..XXXXXXX..','..XX.X.XX..',
-         '..XXXXXXX..','...X.X.X...','..X.....X..','.X.......X.']
-      ],
-      [ // type 1 — middle rows
-        ['..X.....X..','...X...X...','..XXXXXXX..','.XX.XXX.XX.',
-         'XXXXXXXXXXX','X.XXXXXXX.X','X.X.....X.X','...XX.XX...'],
-        ['..X.....X..','X..X...X..X','X.XXXXXXX.X','XXX.XXX.XXX',
-         'XXXXXXXXXXX','.XXXXXXXXX.','..X.....X..','.X.......X.']
-      ],
-      [ // type 2 — bottom rows
-        ['...XXXXX...','.XXXXXXXXX.','XXXXXXXXXXX','XXX.XXX.XXX',
-         'XXXXXXXXXXX','..XX.X.XX..','.XX.XXX.XX.','XX.......XX'],
-        ['...XXXXX...','.XXXXXXXXX.','XXXXXXXXXXX','XXX.XXX.XXX',
-         'XXXXXXXXXXX','...XX.XX...','..XX.X.XX..','.X.X...X.X.']
-      ]
+      [['....XXX....','...XXXXX...','..XXXXXXX..','..XX.X.XX..',
+        '..XXXXXXX..','...X.X.X...','..X.X.X.X..','...X...X...'],
+       ['....XXX....','...XXXXX...','..XXXXXXX..','..XX.X.XX..',
+        '..XXXXXXX..','...X.X.X...','..X.....X..','.X.......X.']],
+      [['..X.....X..','...X...X...','..XXXXXXX..','.XX.XXX.XX.',
+        'XXXXXXXXXXX','X.XXXXXXX.X','X.X.....X.X','...XX.XX...'],
+       ['..X.....X..','X..X...X..X','X.XXXXXXX.X','XXX.XXX.XXX',
+        'XXXXXXXXXXX','.XXXXXXXXX.','..X.....X..','.X.......X.']],
+      [['...XXXXX...','.XXXXXXXXX.','XXXXXXXXXXX','XXX.XXX.XXX',
+        'XXXXXXXXXXX','..XX.X.XX..','.XX.XXX.XX.','XX.......XX'],
+       ['...XXXXX...','.XXXXXXXXX.','XXXXXXXXXXX','XXX.XXX.XXX',
+        'XXXXXXXXXXX','...XX.XX...','..XX.X.XX..','.X.X...X.X.']]
     ];
 
-    var PIXEL = 2.6; // world units per sprite pixel
+    var PIXEL = 2.6;
 
     function drawSprite(rows, cx, cy, color, px) {
       px = px || PIXEL;
@@ -256,7 +284,7 @@
     }
 
     /* ======================================================================
-       RENDER
+       DRAWING HELPERS
        ====================================================================== */
     var varCache = {};
     function getVar(name) {
@@ -266,155 +294,40 @@
       }
       return varCache[name];
     }
-    function charColor() {
-      return game.state.character === 'volume' ? getVar('--volume') : getVar('--precision');
-    }
     var INVADER_COLORS = ['--cyan', '--green', '--amber'];
 
-    function render() {
-      var s = game.state;
-      var j;
+    function text(str, x, y, size, color, align, glow) {
+      ctx.font = (size >= 15 ? 'bold ' : '') + size + 'px ui-monospace, Menlo, monospace';
+      ctx.textAlign = align || 'center';
+      ctx.fillStyle = color;
+      if (glow) { ctx.shadowColor = color; ctx.shadowBlur = glow; }
+      ctx.fillText(str, x, y);
+      ctx.shadowBlur = 0;
+    }
 
+    function beginField() {
       ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
       ctx.fillStyle = getVar('--bg');
       ctx.fillRect(0, 0, view.cssW, view.cssH);
-
       ctx.setTransform(
         view.dpr * view.scale, 0, 0, view.dpr * view.scale,
         view.dpr * view.offX,  view.dpr * view.offY
       );
-
       ctx.fillStyle = getVar('--field');
       ctx.fillRect(0, 0, W, H);
+      ctx.textBaseline = 'middle';
+    }
 
-      // Faint grid, so movement has something to read against.
-      ctx.strokeStyle = getVar('--grid');
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (var gx = 0; gx <= W; gx += 40) { ctx.moveTo(gx, 0); ctx.lineTo(gx, H); }
-      for (var gy = 0; gy <= H; gy += 40) { ctx.moveTo(0, gy); ctx.lineTo(W, gy); }
-      ctx.stroke();
-
-      // The line invaders must not cross.
-      ctx.strokeStyle = 'rgba(255,194,71,0.30)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([6, 6]);
-      ctx.beginPath();
-      ctx.moveTo(0, CI.bottomLine);
-      ctx.lineTo(W, CI.bottomLine);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Invaders.
-      for (j = 0; j < s.invaders.length; j++) {
-        var inv = s.invaders[j];
-        if (!inv.alive) continue;
-        drawSprite(
-          INVADERS[inv.type][s.formation.frame],
-          Math.round(inv.x), Math.round(inv.y),
-          getVar(INVADER_COLORS[inv.type])
-        );
-      }
-
-      // Player shots.
-      ctx.fillStyle = charColor();
-      for (j = 0; j < s.shots.length; j++) {
-        var sh = s.shots[j];
-        if (sh.active) ctx.fillRect(Math.round(sh.x) - 1.5, Math.round(sh.y) - 5, 3, 10);
-      }
-
-      // SPAM LIKELY — drawn over the shots, so you can see them being eaten.
-      for (j = 0; j < s.blockers.length; j++) {
-        var bl = s.blockers[j];
-        if (!bl.active) continue;
-        var bx = Math.round(bl.x - bl.halfWidth);
-        var by = Math.round(bl.y - bl.halfHeight);
-        var bw = Math.round(bl.halfWidth * 2);
-        var bh = Math.round(bl.halfHeight * 2);
-
-        ctx.fillStyle = '#e9edf2';
-        ctx.fillRect(bx, by, bw, bh);
-        ctx.fillStyle = '#0b0f14';
-        ctx.fillRect(bx + 2, by + 2, bw - 4, 2);
-        ctx.fillRect(bx + 2, by + bh - 4, bw - 4, 2);
-
-        ctx.fillStyle = '#0b0f14';
-        ctx.font = 'bold 15px ui-monospace, Menlo, monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('SPAM LIKELY', bl.x, bl.y + 1);
-        ctx.textBaseline = 'top';
-      }
-
-      // Enemy shots.
-      ctx.fillStyle = getVar('--bone');
-      for (j = 0; j < s.enemyShots.length; j++) {
-        var eb = s.enemyShots[j];
-        if (eb.active) ctx.fillRect(Math.round(eb.x) - 1.5, Math.round(eb.y) - 6, 3, 12);
-      }
-
-      // Ship — blinks while stunned.
-      var stunned = s.stun > 0;
-      if (!stunned || Math.floor(s.elapsed * 14) % 2 === 0) {
-        drawSprite(
-          s.character === 'volume' ? SHIP_VOLUME : SHIP_PRECISION,
-          Math.round(s.ship.x), Math.round(s.ship.y), charColor()
-        );
-      }
-
-      // Hit flash.
-      if (s.flashHit > 0) {
-        ctx.fillStyle = 'rgba(255,255,255,' + (0.30 * (s.flashHit / 0.35)).toFixed(3) + ')';
-        ctx.fillRect(0, 0, W, H);
-      }
-
-      // HUD.
-      ctx.fillStyle = getVar('--amber');
-      ctx.font = '13px ui-monospace, Menlo, monospace';
-      ctx.textBaseline = 'top';
-      ctx.textAlign = 'left';
-      ctx.fillText('SCORE ' + String(s.score).padStart(5, '0'), 10, 10);
-      ctx.textAlign = 'right';
-      ctx.fillText('LIVES ' + Math.max(0, s.lives), W - 10, 10);
-      ctx.textAlign = 'center';
-      ctx.fillStyle = charColor();
-      ctx.fillText(s.character.toUpperCase(), W / 2, 10);
-
-      // End state — temporary until Phase 6.
-      if (s.phase !== 'playing') {
-        ctx.fillStyle = 'rgba(7,8,12,0.82)';
-        ctx.fillRect(0, 0, W, H);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = s.phase === 'won' ? getVar('--green') : getVar('--precision');
-        ctx.font = '30px ui-monospace, Menlo, monospace';
-        ctx.fillText(s.phase === 'won' ? 'CLEARED' : 'OVERRUN', W / 2, H / 2 - 30);
-        ctx.fillStyle = getVar('--amber');
-        ctx.font = '13px ui-monospace, Menlo, monospace';
-        ctx.fillText('SCORE ' + s.score + '   ' + s.elapsed.toFixed(1) + 's', W / 2, H / 2 + 6);
-        ctx.fillStyle = getVar('--dim');
-        ctx.font = '11px ui-monospace, Menlo, monospace';
-        ctx.fillText(s.lossReason ? 'reason: ' + s.lossReason : 'grid cleared', W / 2, H / 2 + 28);
-        ctx.fillText('tap to play again', W / 2, H / 2 + 50);
-        ctx.textBaseline = 'top';
-      }
-
-      // Dev readout — goes away in Phase 6.
-      ctx.fillStyle = getVar('--dim');
-      ctx.font = '10px ui-monospace, Menlo, monospace';
-      ctx.textAlign = 'left';
-      ctx.fillText('seed ' + seedLabel + '   left ' + s.aliveCount, 10, H - 30);
-      ctx.fillText('t ' + s.elapsed.toFixed(1) + 's   ' + fps + 'fps   shots ' +
-                   s.stats.shotsFired + '/' + s.stats.shotsHit +
-                   '   blocked ' + s.stats.shotsAbsorbed, 10, H - 18);
-      ctx.textAlign = 'right';
-      ctx.fillText('phase 5 — spam likely', W - 10, H - 18);
-
-      // Scanlines over the top, for the CRT read.
+    function endField() {
       ctx.fillStyle = 'rgba(0,0,0,0.20)';
       for (var y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
 
-      // Mask anything that strayed outside the playfield.
+      var g = ctx.createRadialGradient(W / 2, H / 2, H * 0.30, W / 2, H / 2, H * 0.74);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.55)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+
       ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
       ctx.fillStyle = getVar('--bg');
       if (view.offX > 0) {
@@ -428,43 +341,253 @@
     }
 
     /* ======================================================================
+       SELECT SCREEN
+       ====================================================================== */
+    function renderSelect() {
+      beginField();
+
+      var drift = Math.sin(selectClock * 0.55);
+      var animFrame = Math.floor(selectClock * 1.6) % 2;
+      for (var r = 0; r < 2; r++) {
+        for (var c = 0; c < 7; c++) {
+          ctx.globalAlpha = 0.16;
+          drawSprite(INVADERS[r][animFrame], 60 + c * 40 + drift * 14, 50 + r * 30,
+                     getVar(INVADER_COLORS[r]), 2.2);
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      text('PRECISION', W / 2, 138, 26, getVar('--precision'), 'center', 12);
+      text('vs.',       W / 2, 164, 12, getVar('--dim'));
+      text('VOLUME',    W / 2, 190, 26, getVar('--volume'), 'center', 12);
+
+      for (var i = 0; i < CHARACTERS.length; i++) {
+        var ch = CHARACTERS[i];
+        var rect = cardRect(i);
+        var col = getVar(ch.colorVar);
+        var hot = hoverCard === i;
+
+        ctx.fillStyle = hot ? 'rgba(255,255,255,0.055)' : 'rgba(255,255,255,0.025)';
+        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        ctx.strokeStyle = col;
+        ctx.globalAlpha = hot ? 1 : 0.5;
+        ctx.lineWidth = hot ? 2 : 1;
+        ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+        ctx.globalAlpha = 1;
+
+        var bob = Math.sin(selectClock * 2.2 + i * 1.7) * 3;
+        drawSprite(SHIPS[ch.id], rect.x + 48, rect.y + rect.h / 2 + bob, col, 3.2);
+
+        var tx = rect.x + 96;
+        text(ch.name,     tx, rect.y + 42,  19, col, 'left', hot ? 10 : 0);
+        text(ch.tagline,  tx, rect.y + 68,  9,  getVar('--amber'), 'left');
+        text(ch.blurb[0], tx, rect.y + 94,  9,  getVar('--dim'), 'left');
+        text(ch.blurb[1], tx, rect.y + 110, 9,  getVar('--dim'), 'left');
+      }
+
+      var pulse = 0.5 + 0.5 * Math.sin(selectClock * 3);
+      ctx.globalAlpha = 0.45 + 0.55 * pulse;
+      text('TAP A SIDE TO BEGIN', W / 2, H - 76, 12, getVar('--amber'));
+      ctx.globalAlpha = 1;
+      text('drag anywhere to move  ·  firing is automatic', W / 2, H - 54, 8.5, getVar('--dim'));
+
+      endField();
+    }
+
+    /* ======================================================================
+       PLAY SCREEN
+       ====================================================================== */
+    function renderPlay() {
+      var s = game.state;
+      var j;
+      beginField();
+
+      ctx.strokeStyle = getVar('--grid');
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (var gx = 0; gx <= W; gx += 40) { ctx.moveTo(gx, 0); ctx.lineTo(gx, H); }
+      for (var gy = 0; gy <= H; gy += 40) { ctx.moveTo(0, gy); ctx.lineTo(W, gy); }
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(255,194,71,0.30)';
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.moveTo(0, CI.bottomLine); ctx.lineTo(W, CI.bottomLine);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      for (j = 0; j < s.invaders.length; j++) {
+        var inv = s.invaders[j];
+        if (!inv.alive) continue;
+        drawSprite(INVADERS[inv.type][s.formation.frame],
+                   Math.round(inv.x), Math.round(inv.y),
+                   getVar(INVADER_COLORS[inv.type]));
+      }
+
+      var col = getVar(s.character === 'volume' ? '--volume' : '--precision');
+
+      ctx.fillStyle = col;
+      for (j = 0; j < s.shots.length; j++) {
+        var sh = s.shots[j];
+        if (sh.active) ctx.fillRect(Math.round(sh.x) - 1.5, Math.round(sh.y) - 5, 3, 10);
+      }
+
+      /* SPAM LIKELY — drawn over the shots, so you see them being eaten. */
+      for (j = 0; j < s.blockers.length; j++) {
+        var bl = s.blockers[j];
+        if (!bl.active) continue;
+        var bx = Math.round(bl.x - bl.halfWidth), by = Math.round(bl.y - bl.halfHeight);
+        var bw = Math.round(bl.halfWidth * 2),    bh = Math.round(bl.halfHeight * 2);
+        ctx.fillStyle = '#e9edf2';
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = '#0b0f14';
+        ctx.fillRect(bx + 2, by + 2, bw - 4, 2);
+        ctx.fillRect(bx + 2, by + bh - 4, bw - 4, 2);
+        text('SPAM LIKELY', bl.x, bl.y + 1, 15, '#0b0f14');
+      }
+
+      ctx.fillStyle = getVar('--bone');
+      for (j = 0; j < s.enemyShots.length; j++) {
+        var eb = s.enemyShots[j];
+        if (eb.active) ctx.fillRect(Math.round(eb.x) - 1.5, Math.round(eb.y) - 6, 3, 12);
+      }
+
+      var stunned = s.stun > 0;
+      if (!stunned || Math.floor(s.elapsed * 14) % 2 === 0) {
+        drawSprite(SHIPS[s.character], Math.round(s.ship.x), Math.round(s.ship.y), col);
+      }
+
+      if (s.flashHit > 0) {
+        ctx.fillStyle = 'rgba(255,255,255,' + (0.30 * (s.flashHit / 0.35)).toFixed(3) + ')';
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      text('SCORE ' + String(s.score).padStart(5, '0'), 10, 18, 12, getVar('--amber'), 'left');
+      text(s.character.toUpperCase(), W / 2, 18, 12, col);
+      for (var l = 0; l < Math.max(0, s.lives); l++) {
+        drawSprite(SHIPS[s.character], W - 16 - l * 20, 18, col, 1.5);
+      }
+
+      if (debug) {
+        text('seed ' + seedLabel + '   left ' + s.aliveCount, 10, H - 26, 9, getVar('--dim'), 'left');
+        text('t ' + s.elapsed.toFixed(1) + 's   ' + fps + 'fps   shots ' +
+             s.stats.shotsFired + '/' + s.stats.shotsHit +
+             '   blocked ' + s.stats.shotsAbsorbed, 10, H - 13, 9, getVar('--dim'), 'left');
+      }
+
+      endField();
+    }
+
+    /* ======================================================================
+       END SCREEN
+       ====================================================================== */
+    function renderEnd() {
+      renderPlay();
+
+      ctx.setTransform(
+        view.dpr * view.scale, 0, 0, view.dpr * view.scale,
+        view.dpr * view.offX,  view.dpr * view.offY
+      );
+      ctx.textBaseline = 'middle';
+
+      var s = game.state;
+      var won = s.phase === 'won';
+      var col = getVar(s.character === 'volume' ? '--volume' : '--precision');
+      var fade = Math.min(1, endClock / 0.45);
+
+      ctx.fillStyle = 'rgba(7,8,12,' + (0.9 * fade).toFixed(3) + ')';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = fade;
+
+      text(won ? 'GRID CLEARED' : 'OVERRUN', W / 2, 178, 27,
+           won ? getVar('--green') : getVar('--precision'), 'center', 14);
+      text('playing as ' + s.character.toUpperCase(), W / 2, 208, 11, col);
+
+      var hitRate = s.stats.shotsFired
+        ? (s.stats.shotsHit / s.stats.shotsFired * 100).toFixed(1) + '%' : '—';
+
+      var rows = [
+        ['SCORE',           String(s.score)],
+        ['TIME',            s.elapsed.toFixed(1) + 's'],
+        ['SHOTS FIRED',     String(s.stats.shotsFired)],
+        ['SHOTS CONNECTED', s.stats.shotsHit + '  (' + hitRate + ')']
+      ];
+      if (s.stats.shotsAbsorbed > 0) rows.push(['BLOCKED BY SPAM', String(s.stats.shotsAbsorbed)]);
+      if (!won) rows.push(['INVADERS LEFT', String(s.aliveCount) + ' of 35']);
+
+      var y = 266;
+      for (var i = 0; i < rows.length; i++) {
+        text(rows[i][0], 44,     y, 10, getVar('--dim'),   'left');
+        text(rows[i][1], W - 44, y, 12, getVar('--amber'), 'right');
+        ctx.strokeStyle = 'rgba(78,90,104,0.26)';
+        ctx.beginPath();
+        ctx.moveTo(44, y + 14); ctx.lineTo(W - 44, y + 14);
+        ctx.stroke();
+        y += 32;
+      }
+
+      if (endClock > 0.7) {
+        var pulse = 0.5 + 0.5 * Math.sin(endClock * 3);
+        ctx.globalAlpha = fade * (0.45 + 0.55 * pulse);
+        text('TAP TO CHOOSE AGAIN', W / 2, H - 122, 12, getVar('--amber'));
+        ctx.globalAlpha = fade;
+        text('try the other side', W / 2, H - 100, 9, getVar('--dim'));
+      }
+
+      ctx.globalAlpha = 1;
+      endField();
+    }
+
+    /* ======================================================================
        FIXED-TIMESTEP LOOP
 
        Game logic advances in exact 1/120s increments no matter what the
        display does. A 120Hz phone takes one step per frame, a 60Hz screen
        takes two, and both produce the identical round.
        ====================================================================== */
-    var accumulator = 0;
-    var lastTime = 0;
+    var accumulator = 0, lastTime = 0;
     var fps = 0, fpsFrames = 0, fpsClock = 0;
     var MAX_STEPS_PER_FRAME = 300;
 
     function frame(now) {
       requestAnimationFrame(frame);
-
       if (!lastTime) { lastTime = now; return; }
       var delta = (now - lastTime) / 1000;
       lastTime = now;
       if (delta > 0.25) delta = 0.25;   // a backgrounded tab must not fast-forward
 
-      if (keyLeft)  game.nudgeTarget(-KEY_SPEED * delta);
-      if (keyRight) game.nudgeTarget( KEY_SPEED * delta);
-
-      accumulator += delta;
-      var steps = 0;
-      while (accumulator >= STEP && steps < MAX_STEPS_PER_FRAME) {
-        game.step(STEP);
-        accumulator -= STEP;
-        steps++;
-      }
-      if (steps >= MAX_STEPS_PER_FRAME) accumulator = 0;
-
       fpsFrames++; fpsClock += delta;
       if (fpsClock >= 0.5) { fps = Math.round(fpsFrames / fpsClock); fpsFrames = 0; fpsClock = 0; }
 
-      render();
+      if (screen === 'select') {
+        selectClock += delta;
+        renderSelect();
+        return;
+      }
+
+      if (screen === 'play') {
+        if (keyLeft)  game.nudgeTarget(-KEY_SPEED * delta);
+        if (keyRight) game.nudgeTarget( KEY_SPEED * delta);
+
+        accumulator += delta;
+        var steps = 0;
+        while (accumulator >= STEP && steps < MAX_STEPS_PER_FRAME) {
+          game.step(STEP);
+          accumulator -= STEP;
+          steps++;
+        }
+        if (steps >= MAX_STEPS_PER_FRAME) accumulator = 0;
+
+        if (game.state.phase !== 'playing') { screen = 'end'; endClock = 0; }
+        renderPlay();
+        return;
+      }
+
+      endClock += delta;
+      renderEnd();
     }
 
+    if (charParam === 'volume' || charParam === 'precision') startRound(charParam);
     requestAnimationFrame(frame);
   })();
   </script>
