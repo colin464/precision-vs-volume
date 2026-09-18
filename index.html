@@ -248,6 +248,33 @@
     ];
     var SHIPS = { precision: SHIP_PRECISION, volume: SHIP_VOLUME };
 
+    // Little pennant, repeated along the SPAM LIKELY bar.
+    var FLAG = [
+      'X......',
+      'XXXXX..',
+      'XXXXXXX',
+      'XXXXXX.',
+      'XXXX...',
+      'X......',
+      'X......',
+      'X......'
+    ];
+
+    // The NEW NUMBER handset.
+    var PHONE = [
+      '..XXXXXXX..',
+      '.XX.....XX.',
+      'XX.......XX',
+      'XX.......XX',
+      'XX.XXXXX.XX',
+      'XXXX...XXXX',
+      'XXX.....XXX',
+      '.X.......X.',
+      '..XXXXXXX..',
+      '...XXXXX...',
+      '....XXX....'
+    ];
+
     var INVADERS = [
       [['....XXX....','...XXXXX...','..XXXXXXX..','..XX.X.XX..',
         '..XXXXXXX..','...X.X.X...','..X.X.X.X..','...X...X...'],
@@ -443,7 +470,31 @@
         ctx.fillStyle = '#0b0f14';
         ctx.fillRect(bx + 2, by + 2, bw - 4, 2);
         ctx.fillRect(bx + 2, by + bh - 4, bw - 4, 2);
+
+        // Flags along both ends of the bar.
+        var flagCount = 3;
+        for (var f = 0; f < flagCount; f++) {
+          var fy = bl.y;
+          drawSprite(FLAG, bx + 12 + f * 15, fy, '#d0212f', 1.5);
+          drawSprite(FLAG, bx + bw - 12 - f * 15, fy, '#d0212f', 1.5);
+        }
         text('SPAM LIKELY', bl.x, bl.y + 1, 15, '#0b0f14');
+      }
+
+      /* NEW NUMBER handset — sits at the ship's own level, so it has to be
+         driven into rather than shot. */
+      if (s.pickup.active) {
+        var pb = Math.sin(s.pickup.bob * 4) * 3;
+        var ring = 0.5 + 0.5 * Math.sin(s.pickup.bob * 9);
+        ctx.globalAlpha = 0.25 + 0.35 * ring;
+        ctx.fillStyle = getVar('--green');
+        ctx.beginPath();
+        ctx.arc(s.pickup.x, s.pickup.y + pb, 20 + ring * 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        drawSprite(PHONE, Math.round(s.pickup.x), Math.round(s.pickup.y + pb),
+                   getVar('--green'), 2.4);
+        text('NEW NUMBER', s.pickup.x, s.pickup.y - 28, 9, getVar('--green'));
       }
 
       ctx.fillStyle = getVar('--bone');
@@ -460,6 +511,27 @@
       if (s.flashHit > 0) {
         ctx.fillStyle = 'rgba(255,255,255,' + (0.30 * (s.flashHit / 0.35)).toFixed(3) + ')';
         ctx.fillRect(0, 0, W, H);
+      }
+
+      /* Full-screen banner: the bad one flashes, the good one glows steady. */
+      if (s.banner.left > 0) {
+        var bad = s.banner.tone === 'bad';
+        var bcol = bad ? '#ff2b3d' : getVar('--green');
+        var t = s.banner.left / s.banner.total;
+        var show = bad ? (Math.floor(s.banner.left * 9) % 2 === 0) : true;
+        ctx.fillStyle = bad
+          ? 'rgba(80,0,8,' + (0.38 * t).toFixed(3) + ')'
+          : 'rgba(0,60,24,' + (0.34 * t).toFixed(3) + ')';
+        ctx.fillRect(0, 0, W, H);
+        if (show) {
+          var by2 = H * 0.36;
+          ctx.fillStyle = 'rgba(7,8,12,0.82)';
+          ctx.fillRect(0, by2 - 30, W, 60);
+          ctx.strokeStyle = bcol;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(0, by2 - 30, W, 60);
+          text(s.banner.text, W / 2, by2, bad ? 19 : 18, bcol, 'center', 18);
+        }
       }
 
       text('SCORE ' + String(s.score).padStart(5, '0'), 10, 18, 12, getVar('--amber'), 'left');

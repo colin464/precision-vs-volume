@@ -191,6 +191,48 @@ of commentary: a losing VOLUME round reads roughly *776 fired, 14 connected,
 
 ---
 
+## 7b. Gameplay revision (Colin, after Phase 6)
+
+Eight changes requested, all in:
+
+1. **PRECISION fires ~2x faster** — 1500ms -> 440ms (well past 2x, once the
+   whole game was sped up). The round was boring at the old cadence.
+2. **VOLUME's shots climb and actively miss.** This took three tries. Random
+   scatter was wrong twice over: Colin's diagnosis was exact — *scattering
+   improves hit outcomes even though it hurts aim*, because a shot wandering
+   through a dense grid blunders into something about one time in ten. A shot
+   that gives up its climb and slides out sideways missed reliably but looked
+   like it was fired sideways. What works is the opposite of PRECISION's
+   homing: a VOLUME shot locks onto the **lane between two columns** and rides
+   up it at full climb speed, sliding past alien after alien by a few world
+   units. `volume.curveStyle: 'graze'`. Veering shots now connect **1.0%** of
+   the time, down from 41% when they scattered at random.
+3. **SPAM LIKELY narrowed 40%** — widthPct 0.88 -> 0.53.
+4. **YOU'VE BEEN SPAM-FLAGGED** flashes full-screen before the bar drops.
+5. **Flags drawn into the bar**, three at each end.
+6. **NEW NUMBER handset** appears at the ship's own level after the bar has sat
+   for 5s, so it has to be driven into rather than shot. Taking it clears the
+   flag and pops **YOU GOT A NEW NUMBER!**
+7. **Only ever one bar at a time** — maxOnScreen 1, one slot with a life cycle.
+8. **At least 5s of air** between one bar leaving and the next arriving —
+   `minGapMs`, measured from the moment the last one is off screen.
+
+Plus: **everything sped up**. Fire rates, bullet speeds, the invader march,
+enemy fire, the drop and exit of the bar. The two durations Colin fixed by hand
+(5s hover, 5s minimum gap) were left alone.
+
+Grid grew to **12 x 6 = 72** with `cellW` widened to 48 and the invader hitbox
+narrowed to 11, because the lanes a VOLUME shot rides need to be wider than the
+shot. That single geometric fact is what makes the graze work: at cellW 40 the
+lane cleared the shot by 5 world units and VOLUME still won every round; at
+cellW 48 it clears by 11 and VOLUME loses every round.
+
+**Round length:** PRECISION now clears in ~39s, well under the original 90s
+target. That is a direct consequence of the 2x fire rate plus the speed-up,
+both asked for. Flagged for Colin rather than silently re-lengthened.
+
+---
+
 ## 8. Deviations from plan
 
 **Phase 5 — the Phase 4 problem is solved, and SPAM LIKELY is what solved it.**
@@ -337,5 +379,23 @@ Target was >= 95% and 90s +/- 25%. Both met.
 Validated on three independent seed ranges (1-200, 501-700, 9001-9200):
 worst-case PRECISION 96.0%, worst-case VOLUME 1.0%. Targets: >= 95% and <= 2%.
 Round lengths both inside 90s +/- 25% (67.5 - 112.5s).
+
+### After the gameplay revision — thresholds still met
+
+    PRECISION   (200 seeded runs)          VOLUME   (200 seeded runs)
+      win rate ......... 100.0%  PASS        win rate ......... 1.0%    PASS
+      median round ..... 39.3s               median round ..... 71.8s
+      median shots ..... 89                  median shots ..... 794
+      hit rate ......... 80.4%               hit rate ......... 3.6%
+      invaders left .... 0                   invaders left .... 44 of 72
+      outcomes ......... cleared 200         absorbed by SPAM . 6.9%
+                                             outcomes ......... landed 198,
+                                                                cleared 2
+      homing hits 88.5%                      lane-grazing shots hit 1.0%
+      straight   54.0%                       straight shots hit 66.9%
+      miss       57.3%
+
+Validated on three independent seed ranges (1-200, 501-700, 9001-9200):
+worst-case PRECISION 99.3%, worst-case VOLUME 1.3%.
 
 *(Final results re-confirmed at Phase 7.)*

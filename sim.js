@@ -50,7 +50,10 @@
     // under it; this is that instinct, not foresight.
     blockedWeight: 26,
     // How far past the edge of a blocker it wants to be before it settles.
-    blockedMargin: 12
+    blockedMargin: 12,
+    // How strongly it goes after a NEW NUMBER handset. A player who has watched
+    // a SPAM LIKELY bar eat everything goes and gets it.
+    pickupWeight: 6
   };
 
   /* Picks where to stand: close to something worth shooting, away from
@@ -90,14 +93,18 @@
       if (bl.active && bl.y > 0) walls.push(bl);
     }
 
-    // 4. Weigh up standing positions and take the best compromise.
+    // 4. A new number on offer is worth more than lining up a shot.
+    var grab = s.pickup && s.pickup.active ? s.pickup : null;
+
+    // 5. Weigh up standing positions and take the best compromise.
     var margin = PVV.CONFIG.world.shipMargin;
     var lo = margin, hi = PVV.WORLD.w - margin;
     var bestX = ship.x, bestCost = Infinity;
 
     for (var c = 0; c < AUTOPILOT.candidates; c++) {
       var x = lo + (hi - lo) * (c / (AUTOPILOT.candidates - 1));
-      var cost = Math.abs(x - aimX);
+      var cost = grab ? Math.abs(x - grab.x) * AUTOPILOT.pickupWeight
+                      : Math.abs(x - aimX);
       for (var t = 0; t < threats.length; t++) {
         var near = AUTOPILOT.dangerRadius - Math.abs(threats[t].x - x);
         if (near <= 0) continue;

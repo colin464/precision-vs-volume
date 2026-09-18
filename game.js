@@ -54,7 +54,7 @@
       // Seconds the ship is stunned (and cannot fire) after being hit.
       // Higher = harsher for both characters, and costs the slow-firing
       // character proportionally more shots than the fast-firing one.
-      hitStunSec: 0.6,
+      hitStunSec: 0.42,
       // Points per invader destroyed.
       pointsPerKill: 10,
       // Hard ceiling on a round, so a stalemate can never hang the sim.
@@ -69,13 +69,16 @@
     },
 
     invaders: {
-      rows: 5,            // More rows = more to clear = favours VOLUME losing.
-      cols: 7,            // More cols = same.
-      cellW: 40,          // Horizontal spacing between invaders.
-      cellH: 30,          // Vertical spacing between invaders.
-      halfWidth: 13,      // Hitbox half-width. Bigger = easier to hit for BOTH.
+      rows: 12,           // More rows = more to clear = favours VOLUME losing.
+      cols: 6,            // More cols = same.
+      cellW: 48,          // Horizontal spacing between invaders.
+                          //   Sets the width of the lanes between columns.
+                          //   Those lanes are what a VOLUME shot rides up.
+      cellH: 26,          // Vertical spacing between invaders.
+      halfWidth: 11,      // Hitbox half-width. Bigger = easier to hit for BOTH,
+                          //   and narrows the lanes, so VOLUME clips more.
       halfHeight: 9,
-      originY: 96,        // Starting Y of the top row. Lower = more time for both.
+      originY: 40,        // Starting Y of the top row. Lower = more time for both.
       wallMargin: 14,     // How close the formation gets to a wall before turning.
 
       // ---- THE CLOCK ------------------------------------------------------
@@ -90,12 +93,12 @@
       //   * the march speeds up as the grid thins out.
       // Both emerge from how many invaders are left. Neither reads the
       // character, and neither is on a timer.
-      stepInterval: 0.15,     // Seconds between march steps with a full grid.
+      stepInterval: 0.103,    // Seconds between march steps with a full grid.
                               //   LOWER = faster march = grid lands sooner.
-      stepIntervalMin: 0.028, // Seconds between march steps with one invader left.
+      stepIntervalMin: 0.019, // Seconds between march steps with one invader left.
                               //   LOWER = frantic endgame, grid lands sooner.
       stepX: 4,               // World units moved per march step.
-      descentRate: 8.2,       // World units dropped per turn.
+      descentRate: 4.8,       // World units dropped per turn.
                               //   HIGHER = grid lands sooner = less time for
                               //   everyone = VOLUME loses harder and
                               //   PRECISION's winning margin shrinks.
@@ -112,8 +115,8 @@
       bottomLine: 556,        // Y at which invaders count as landed. Player loses.
 
       // ---- Invader return fire — IDENTICAL for both characters -------------
-      fireIntervalRange: [2.0, 4.0], // Seconds between enemy shots. LOWER = harder.
-      bulletSpeed: 155,   // World units/sec downward.
+      fireIntervalRange: [1.4, 2.8], // Seconds between enemy shots. LOWER = harder.
+      bulletSpeed: 225,   // World units/sec downward.
       bulletHalfW: 2,
       bulletHalfH: 6
     },
@@ -129,9 +132,9 @@
        ---------------------------------------------------------------------- */
 
     precision: {
-      fireIntervalMs: 1500,      // LOWER = clears faster = PRECISION wins more.
+      fireIntervalMs: 440,       // LOWER = clears faster = PRECISION wins more.
                                  //   Also the main dial on round length.
-      bulletSpeed: 460,          // Higher = less time for the grid to move on.
+      bulletSpeed: 670,          // Higher = less time for the grid to move on.
 
       weights: {                 // Relative odds of each shot behaviour.
         homing: 76,              //   Raise = higher hit rate = more wins.
@@ -141,21 +144,25 @@
         miss: 8                  //   Raise = lower hit rate = fewer wins.
       },
 
-      homingDelaySec: 0.18,      // Straight flight before the curve begins.
+      homingDelaySec: 0.12,      // Straight flight before the curve begins.
                                  //   Higher = later, sharper turn; too high misses.
-      homingStrength: 5.2,       // How fast the shot settles onto its intercept.
+      homingStrength: 15,       // How fast the shot settles onto its intercept.
                                  //   Too high looks like a snap, too low misses.
       homingAcquireRange: 150,   // Horizontal reach when picking a target.
                                  //   Wider = more shots find someone = more wins.
                                  //   Measured inert above ~150: at this grid
                                  //   spacing there is always a target closer
                                  //   than that, so raising it changes nothing.
-      homingMaxTurn: 300,        // Cap on lateral speed. Keeps the arc graceful.
+      homingMaxTurn: 440,        // Cap on lateral speed. Keeps the arc graceful.
 
-      missDriftAmount: 90,       // Lateral drift speed on an inexplicable miss.
-      missOnsetRange: [0.10, 0.30], // Straight flight before the drift begins.
+      missStyle: 'drift',        // PRECISION's rare miss really is inexplicable:
+                                 //   it just wanders. See volume.curveStyle.
+      missDriftAmount: 130,       // Lateral drift speed on an inexplicable miss.
+      missOnsetRange: [0.07, 0.21], // Straight flight before the drift begins.
       missRampRate: 6,           // How fast the drift builds once it starts.
                                  //   Low = a lazy, sad little swerve.
+      missDragDelaySec: 0.40,    // How long it keeps climbing after it starts to
+                                 //   drift. See volume.curveDragDelaySec.
       missVerticalDrag: 0.35,    // How much upward drive a drifting shot gives
                                  //   up. 0 = keeps climbing, 1 = stops climbing
                                  //   and slides sideways out of play.
@@ -169,22 +176,29 @@
     },
 
     volume: {
-      fireIntervalMs: 130,       // LOWER = more shots. Does not fix the hit rate.
-      bulletSpeed: 380,
+      fireIntervalMs: 90,        // LOWER = more shots. Does not fix the hit rate.
+      bulletSpeed: 550,
 
       // VOLUME has no homing at all. Every shot is either straight or veers
       // away, and the split is set by this one number.
-      curveAwayProbability: 0.995,// Share of shots that veer off.
+      curveAwayProbability: 0.96,// Share of shots that veer off.
                                  //   HIGHER = VOLUME loses more.
                                  //   Measured: the shots that do NOT veer are
                                  //   worth far more than their share, because a
                                  //   straight shot from under the grid connects
                                  //   about three times in four.
-      curveMagnitudeRange: [700, 1400], // Lateral drift speed of a veering shot.
+      curveMagnitudeRange: [600, 1150], // Lateral drift speed of a veering shot.
+                                 //   Kept well below the bullet's climb speed so
+                                 //   a veering shot still visibly travels UP the
+                                 //   screen and wanders off course, rather than
+                                 //   darting out sideways.
                                  //   Lower values can still accidentally hit.
-      curveOnsetRange: [0.09, 0.22],  // Straight flight before the veer begins.
+      curveOnsetRange: [0.055, 0.15],  // Straight flight before the veer begins.
                                  //   Higher = leaves the gun straighter for longer.
-      curveVerticalDrag: 0.9,    // How much upward drive a veering shot gives
+      curveDragDelaySec: 0,      // Unused while curveVerticalDrag is 0.
+      curveVerticalDrag: 0,      // A VOLUME shot NEVER gives up its climb. It
+                                 //   rises the whole way and simply goes wide.
+                                 //   How much upward drive a veering shot gives
                                  //   up as it peels away. 0 = keeps climbing
                                  //   into the grid and blunders into things,
                                  //   1 = stops climbing entirely and slides out
@@ -192,13 +206,30 @@
                                  //   HIGHER = VOLUME connects with less, and is
                                  //   what lets the shot still leave the gun
                                  //   visibly straight before it goes wrong.
-      curveRampRate: 18,         // How fast the veer builds once it starts.
+      curveRampRate: 20,         // How fast the veer builds once it starts.
                                  //   HIGHER = the shot is gone sideways before
                                  //   it can blunder into anything, including at
                                  //   point-blank range when the grid is low.
                                  //   This is what stops a firehose working by
                                  //   sheer proximity late in a round.
       curveWobble: 5.5,          // Wobble frequency, so curves look erratic.
+
+      curveStyle: 'graze',       // How a veering shot goes wrong.
+                                 //   'drift' = wanders off at random. Measured
+                                 //     to be useless: a shot scattering through
+                                 //     a dense grid blunders into something
+                                 //     about one time in ten, which at this fire
+                                 //     rate out-kills PRECISION.
+                                 //   'graze' = the shot picks the alien in its
+                                 //     path and steers for the gap right beside
+                                 //     it. It climbs the whole way and slides by
+                                 //     a hair's breadth, again and again, all
+                                 //     the way up the screen.
+      grazeTrack: 11,           // How hard it pulls back into the lane.
+                                 //   LOWER = sloppier lane-holding, more
+                                 //   accidental hits, VOLUME does better.
+      grazeMaxTurn: 760,         // Cap on the sideways correction, so threading
+                                 //   past reads as a swerve, not a teleport.
 
       shipLagFactor: 0.78,       // 0 = instant response, 1 = very sluggish.
       shipOvershoot: 0.72,       // 0 = stops dead, 1 = slides way past target.
@@ -211,22 +242,38 @@
     // `blocker` key on each character config below, not by any check on the
     // character's name: VOLUME dials so much its number gets flagged.
     spamLikely: {
-      firstSpawnMs: 6000,        // Delay before the first blocker. Lower = harsher.
-      respawnIntervalRange: [2200, 4600], // Gap between blockers. Lower = harsher.
-      fallSpeed: 300,            // Must exceed invader descent so it arrives first.
-      hoverDurationMs: 5500,     // How long it parks and blocks. Higher = harsher.
-      exitSpeed: 420,            // How fast it leaves once the hover ends.
+      // --- timing -----------------------------------------------------------
+      firstSpawnMs: 5000,        // Quiet time before the first flag. Lower = harsher.
+      respawnIntervalRange: [5000, 8000], // Quiet time between flags.
+      minGapMs: 5000,            // Hard floor on that quiet time, measured from
+                                 //   the moment the last bar has gone. Nothing
+                                 //   may drop sooner than this.
+      warningMs: 1000,           // How long YOU'VE BEEN SPAM-FLAGGED flashes
+                                 //   before the bar actually falls.
+      fallSpeed: 430,            // Must exceed invader descent so it arrives first.
+      hoverDurationMs: 5000,     // How long it sits there before a new number is
+                                 //   offered. Higher = harsher.
+      maxHoverMs: 9000,         // It gives up and leaves on its own after this,
+                                 //   whether or not the new number was taken.
+      exitSpeed: 600,            // How fast it leaves once the hover ends.
+
+      // --- geometry ---------------------------------------------------------
       bandY: 496,                // Y it halts at — between player and invaders.
                                  //   LOWER (higher up the screen) and it stops
                                  //   mattering once the grid descends past it.
                                  //   Near the ship it blocks the close-range
                                  //   window, which is the only range at which a
                                  //   firehose reliably connects.
-      widthPct: 0.88,            // Share of world width it covers. Higher = harsher.
-                                 //   At this width the ship has one narrow gap
-                                 //   to shoot through, which is the point.
+      widthPct: 0.53,            // Share of world width it covers. Higher = harsher.
       height: 30,
-      maxOnScreen: 2             // Pool size. More = overlapping blockers.
+      maxOnScreen: 1,            // Only ever one flag at a time.
+
+      // --- the way out ------------------------------------------------------
+      pickupHalfWidth: 13,       // The NEW NUMBER handset that appears at the
+      pickupHalfHeight: 13,      //   ship's own level once the bar has sat for
+      pickupBob: 4,              //   hoverDurationMs. Drive into it and the flag
+      bannerMs: 1500             //   clears. Bigger = easier to collect.
+                                 // bannerMs: how long each full-screen banner holds.
     },
 
     limits: {
@@ -327,7 +374,11 @@
         onsetRange: cfg.missOnsetRange,
         ramp: cfg.missRampRate,
         verticalDrag: cfg.missVerticalDrag,
-        wobble: cfg.missWobble
+        dragDelay: cfg.missDragDelaySec,
+        wobble: cfg.missWobble,
+        style: cfg.missStyle || 'drift',
+        grazeTrack: 0,
+        grazeMaxTurn: 0
       };
     }
     // A config that names a curve-away probability instead of weights is
@@ -346,7 +397,11 @@
       onsetRange: cfg.curveOnsetRange,
       ramp: cfg.curveRampRate,
       verticalDrag: cfg.curveVerticalDrag,
-      wobble: cfg.curveWobble
+      dragDelay: cfg.curveDragDelaySec,
+      wobble: cfg.curveWobble,
+      style: cfg.curveStyle || 'drift',
+      grazeTrack: cfg.grazeTrack,
+      grazeMaxTurn: cfg.grazeMaxTurn
     };
   }
 
@@ -393,7 +448,16 @@
 
       fireTimer: 0,
       enemyFireTimer: 0,
-      blockerTimer: BL ? BL.firstSpawnMs / 1000 : Infinity,
+
+      // SPAM LIKELY runs as one slot with a life cycle, never two at once.
+      spam: {
+        mode: 'idle',            // idle -> warning -> falling -> hovering -> leaving
+        timer: BL ? BL.firstSpawnMs / 1000 : Infinity,
+        hovered: 0,
+        flagsCleared: 0
+      },
+      pickup: { active: false, x: 0, y: 0, bob: 0 },
+      banner: { text: '', tone: '', left: 0, total: 1 },
 
       stats: {
         shotsFired: 0,
@@ -436,8 +500,7 @@
       for (i = 0; i < BL.maxOnScreen; i++) {
         state.blockers.push({
           active: false, x: 0, y: 0,
-          halfWidth: 0, halfHeight: BL.height / 2,
-          mode: 'falling', hoverLeft: 0
+          halfWidth: 0, halfHeight: BL.height / 2
         });
       }
     }
@@ -591,6 +654,20 @@
       return best;
     }
 
+    /* The centre of the nearest lane between two columns of the formation.
+       The lanes move with the formation, so a shot that locks onto one and
+       holds it rides up between the columns, passing each alien by a few world
+       units. Lanes exist outside the end columns too. */
+    function nearestLaneX(x) {
+      var bestX = x, bestD = Infinity;
+      for (var k = -1; k < CI.cols; k++) {
+        var lane = originX + (k + 0.5) * CI.cellW + state.formation.offX;
+        var d = Math.abs(lane - x);
+        if (d < bestD) { bestD = d; bestX = lane; }
+      }
+      return bestX;
+    }
+
     function steerShot(s, dt) {
       if (s.kind === 'homing') {
         if (s.age < P.homingDelay) return;               // starts straight
@@ -605,14 +682,35 @@
 
       } else if (s.kind === 'miss') {
         if (s.age < s.onset) return;                     // leaves the gun straight
+
+        if (P.style === 'graze') {
+          // Lock onto the lane between two columns and hold it. The shot keeps
+          // climbing at full speed and rides up the gap, sliding past alien
+          // after alien by a few world units.
+          //
+          // Nothing is discarded and nothing is made unhittable. The shot is
+          // simply steered a few world units wide, and the ordinary collision
+          // test below then finds nothing where it is. Shots that are still
+          // converging on the lane, or whose lane closes up as the formation
+          // shifts, do connect — which is why VOLUME still scores.
+          var lane = nearestLaneX(s.x);
+          var err = lane - s.x;
+          var gneed = clamp(err * P.grazeTrack, -P.grazeMaxTurn, P.grazeMaxTurn);
+          s.vx += (gneed - s.vx) * P.ramp * dt;
+          return;
+        }
+
         var w = Math.sin(s.wobblePhase + s.age * P.wobble);
         var want = s.driftVx * (0.65 + 0.35 * w);
         s.vx += (want - s.vx) * P.ramp * dt;
-        // A shot that has gone sideways stops driving upward as hard: the
-        // energy went into the swerve. It slides out of play instead of
-        // climbing on into whatever happens to be above it.
-        var wantVy = -charCfg.bulletSpeed * (1 - P.verticalDrag);
-        s.vy += (wantVy - s.vy) * P.ramp * dt;
+        // For the first part of the swerve the shot keeps climbing, so what
+        // you watch is a shot going up the screen and bending off course.
+        // Only once it is well off course does it give up its climb and slide
+        // out of play, rather than blundering on into whatever is above it.
+        if (s.age - s.onset > P.dragDelay) {
+          var wantVy = -charCfg.bulletSpeed * (1 - P.verticalDrag);
+          s.vy += (wantVy - s.vy) * P.ramp * dt;
+        }
       }
       // 'straight' does nothing — it keeps the vx of 0 it was fired with.
     }
@@ -660,40 +758,88 @@
        behind it can be hit. It is an outbound filter, so it does not stop the
        invaders' own fire coming the other way.
        ---------------------------------------------------------------------- */
+    function showBanner(txt, tone) {
+      state.banner.text = txt;
+      state.banner.tone = tone;
+      state.banner.total = BL.bannerMs / 1000;
+      state.banner.left = state.banner.total;
+    }
+
     function updateBlockers(dt) {
       if (!BL) return;
+      var sp = state.spam;
+      var bar = state.blockers[0];
 
-      state.blockerTimer -= dt;
-      if (state.blockerTimer <= 0) {
-        var slot = null;
-        for (var n = 0; n < state.blockers.length; n++) {
-          if (!state.blockers[n].active) { slot = state.blockers[n]; break; }
-        }
-        state.blockerTimer = rng.pair(BL.respawnIntervalRange) / 1000;
-        if (slot) {
-          slot.halfWidth = (WORLD.w * BL.widthPct) / 2;
-          slot.halfHeight = BL.height / 2;
-          slot.x = rng.range(slot.halfWidth, WORLD.w - slot.halfWidth);
-          slot.y = -slot.halfHeight;
-          slot.mode = 'falling';
-          slot.hoverLeft = BL.hoverDurationMs / 1000;
-          slot.active = true;
+      if (state.banner.left > 0) state.banner.left -= dt;
+
+      if (state.pickup.active) {
+        state.pickup.bob += dt;
+        // Drive into the handset and the flag is gone.
+        if (overlaps(state.ship.x, state.ship.y,
+                     CONFIG.ship.halfWidth, CONFIG.ship.halfHeight,
+                     state.pickup.x, state.pickup.y,
+                     BL.pickupHalfWidth, BL.pickupHalfHeight)) {
+          state.pickup.active = false;
+          sp.flagsCleared++;
+          showBanner("YOU GOT A NEW NUMBER!", 'good');
+          if (bar.active) { sp.mode = 'leaving'; }
         }
       }
 
-      for (var j = 0; j < state.blockers.length; j++) {
-        var b = state.blockers[j];
-        if (!b.active) continue;
-        if (b.mode === 'falling') {
-          b.y += BL.fallSpeed * dt;
-          if (b.y >= BL.bandY) { b.y = BL.bandY; b.mode = 'hovering'; }
-        } else if (b.mode === 'hovering') {
-          b.hoverLeft -= dt;
-          if (b.hoverLeft <= 0) b.mode = 'leaving';
-        } else {
-          b.y += BL.exitSpeed * dt;
-          if (b.y - b.halfHeight > WORLD.h) b.active = false;
+      if (sp.mode === 'idle') {
+        sp.timer -= dt;
+        if (sp.timer <= 0) {
+          sp.mode = 'warning';
+          sp.timer = BL.warningMs / 1000;
+          showBanner("YOU'VE BEEN SPAM-FLAGGED", 'bad');
         }
+        return;
+      }
+
+      if (sp.mode === 'warning') {
+        sp.timer -= dt;
+        if (sp.timer <= 0) {
+          bar.halfWidth = (WORLD.w * BL.widthPct) / 2;
+          bar.halfHeight = BL.height / 2;
+          bar.x = rng.range(bar.halfWidth, WORLD.w - bar.halfWidth);
+          bar.y = -bar.halfHeight;
+          bar.active = true;
+          sp.mode = 'falling';
+          sp.hovered = 0;
+        }
+        return;
+      }
+
+      if (sp.mode === 'falling') {
+        bar.y += BL.fallSpeed * dt;
+        if (bar.y >= BL.bandY) { bar.y = BL.bandY; sp.mode = 'hovering'; }
+        return;
+      }
+
+      if (sp.mode === 'hovering') {
+        sp.hovered += dt;
+        // After it has sat there a while, a new number is offered, at the
+        // ship's own level so it has to be driven into rather than shot.
+        if (!state.pickup.active && sp.hovered >= BL.hoverDurationMs / 1000) {
+          var margin = CONFIG.world.shipMargin + BL.pickupHalfWidth;
+          state.pickup.active = true;
+          state.pickup.x = rng.range(margin, WORLD.w - margin);
+          state.pickup.y = CONFIG.world.shipY;
+          state.pickup.bob = 0;
+        }
+        if (sp.hovered >= BL.maxHoverMs / 1000) sp.mode = 'leaving';
+        return;
+      }
+
+      // leaving
+      bar.y += BL.exitSpeed * dt;
+      if (bar.y - bar.halfHeight > WORLD.h) {
+        bar.active = false;
+        state.pickup.active = false;
+        sp.mode = 'idle';
+        // The quiet gap is measured from now, so there is always real air
+        // between one flag going and the next arriving.
+        sp.timer = Math.max(BL.minGapMs, rng.pair(BL.respawnIntervalRange)) / 1000;
       }
     }
 
