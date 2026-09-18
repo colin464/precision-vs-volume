@@ -1,4 +1,6 @@
 # Everything here stays on the server side or in the repo — it is not served.
+.git/
+.DS_Store
 worker.js
 wrangler.jsonc
 schema.sql
