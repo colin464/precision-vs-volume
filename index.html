@@ -50,10 +50,154 @@
     touch-action: none;          /* no scroll, no pinch-zoom, no double-tap zoom */
     image-rendering: pixelated;
   }
+
+  /* ---- The screens either side of the game -------------------------------
+     Real HTML rather than canvas, so the keyboard, autofill and the score
+     list all behave the way a phone expects. Styled to match the cabinet. */
+  .panel {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 14px;
+    padding: calc(env(safe-area-inset-top) + 26px) 22px
+             calc(env(safe-area-inset-bottom) + 26px);
+    background:
+      radial-gradient(ellipse at 50% 38%, #10161d 0%, #07080c 72%);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    text-align: center;
+    z-index: 5;
+  }
+  .panel.on { display: flex; }
+
+  .panel h1 {
+    margin: 4px 0 0;
+    font-size: 21px;
+    letter-spacing: 1px;
+    color: var(--amber);
+    text-shadow: 0 0 14px rgba(255,194,71,0.45);
+  }
+  .panel h1 .p { color: var(--precision); text-shadow: 0 0 14px rgba(255,43,61,0.5); }
+  .panel h1 .v { color: var(--volume);    text-shadow: 0 0 14px rgba(180,76,255,0.5); }
+  .panel h1 .vs { color: var(--dim); font-size: 13px; text-shadow: none; }
+
+  .lead { margin: 0; font-size: 11px; letter-spacing: 2px; color: var(--dim); }
+  .who  { margin: 0; font-size: 24px; color: var(--green);
+          text-shadow: 0 0 14px rgba(70,224,122,0.45); word-break: break-word; }
+
+  form { width: 100%; max-width: 330px; display: flex; flex-direction: column; gap: 11px; }
+
+  label {
+    display: flex; flex-direction: column; gap: 5px;
+    text-align: left; font-size: 10px; letter-spacing: 1.4px; color: var(--amber);
+  }
+  label .hint {
+    display: block; font-size: 9px; letter-spacing: 0.6px;
+    color: var(--dim); text-transform: none; margin-top: -2px;
+  }
+  input {
+    font: 16px/1.2 ui-monospace, Menlo, Consolas, monospace;  /* 16px: no iOS zoom */
+    color: #e9edf2;
+    background: #0b0f14;
+    border: 1px solid #22303d;
+    border-radius: 0;
+    padding: 11px 12px;
+    width: 100%;
+    -webkit-appearance: none;
+    touch-action: manipulation;
+  }
+  input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber); }
+
+  button {
+    font: bold 13px/1 ui-monospace, Menlo, Consolas, monospace;
+    letter-spacing: 2px;
+    cursor: pointer;
+    border-radius: 0;
+    touch-action: manipulation;
+  }
+  .primary {
+    width: 100%; max-width: 330px;
+    padding: 15px 16px;
+    color: #07080c;
+    background: var(--amber);
+    border: none;
+  }
+  .primary:disabled { opacity: 0.5; }
+  .link {
+    background: none; border: 1px solid #22303d; color: var(--amber);
+    padding: 12px 18px; width: 100%; max-width: 330px;
+  }
+  .err { margin: 0; min-height: 14px; font-size: 11px; color: var(--precision); }
+
+  ol.scores { list-style: none; margin: 4px 0 0; padding: 0; width: 100%; max-width: 360px; }
+  ol.scores li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 4px;
+    border-bottom: 1px solid rgba(78,90,104,0.26);
+    font-size: 13px;
+  }
+  ol.scores .rank  { width: 24px; text-align: right; color: var(--dim); font-size: 11px; }
+  ol.scores .name  { flex: 1; text-align: left; color: #e9edf2;
+                     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  ol.scores .side  { font-size: 9px; letter-spacing: 1px; padding: 3px 6px; border: 1px solid; }
+  ol.scores .side.precision { color: var(--precision); border-color: var(--precision); }
+  ol.scores .side.volume    { color: var(--volume);    border-color: var(--volume); }
+  ol.scores .val   { width: 58px; text-align: right; color: var(--amber); }
+  ol.scores .empty { justify-content: center; color: var(--dim); font-size: 11px; border: none; }
+  .spacer { flex: 1 1 auto; min-height: 8px; }
 </style>
 </head>
 <body>
   <div id="stage"><canvas id="screen"></canvas></div>
+
+  <!-- Sign-in. Shown to anyone this phone has not seen before. -->
+  <section id="gate" class="panel">
+    <h1><span class="p">PRECISION</span> <span class="vs">vs.</span> <span class="v">VOLUME</span></h1>
+    <p class="lead">ENTER THE ARCADE</p>
+    <form id="gateForm" novalidate>
+      <label>PLAYER NAME
+        <span class="hint">this is what shows on the high score board</span>
+        <input id="fPlayer" maxlength="20" autocomplete="nickname" autocapitalize="characters" required>
+      </label>
+      <label>YOUR NAME
+        <input id="fName" maxlength="80" autocomplete="name" required>
+      </label>
+      <label>COMPANY
+        <input id="fCompany" maxlength="80" autocomplete="organization" required>
+      </label>
+      <label>EMAIL
+        <input id="fEmail" type="email" inputmode="email" maxlength="200"
+               autocomplete="email" autocapitalize="off" spellcheck="false" required>
+      </label>
+      <p class="err" id="gateError"></p>
+      <button type="submit" class="primary" id="gateGo">CONTINUE</button>
+    </form>
+    <button class="link" data-go="scores">VIEW HIGH SCORES</button>
+    <div class="spacer"></div>
+  </section>
+
+  <!-- Returning player. This phone has been here before. -->
+  <section id="welcome" class="panel">
+    <h1><span class="p">PRECISION</span> <span class="vs">vs.</span> <span class="v">VOLUME</span></h1>
+    <p class="lead">WELCOME BACK</p>
+    <p class="who" id="welcomeName"></p>
+    <div class="spacer"></div>
+    <button class="primary" data-go="select">START A NEW GAME</button>
+    <button class="link" data-go="scores">HIGH SCORES</button>
+    <div class="spacer"></div>
+  </section>
+
+  <!-- High scores. Open to anyone, signed in or not. -->
+  <section id="scores" class="panel">
+    <h1>HIGH SCORES</h1>
+    <p class="lead">TOP 10</p>
+    <ol class="scores" id="scoreList"></ol>
+    <div class="spacer"></div>
+    <button class="primary" id="scoresBack">START A NEW GAME</button>
+  </section>
 
   <script src="game.js"></script>
   <script>
@@ -99,18 +243,192 @@
       }
     ];
 
-    var screen = 'select';          // 'select' | 'play' | 'end'
+    var screen = 'boot';   // 'boot' | 'ui' | 'select' | 'play' | 'end'
     var game = null;
     var seedLabel = '';
     var selectClock = 0;
     var endClock = 0;
 
+    /* ======================================================================
+       WHO IS PLAYING, AND THE SCORE BOARD
+
+       The phone remembers a token after someone signs in once. On the next
+       visit that token is all it takes to be recognised, so nobody types
+       their email twice.
+
+       If there is no server behind this — opened straight off the disk, say —
+       everything below quietly stands down and the game goes straight to
+       character select.
+       ====================================================================== */
+    var TOKEN_KEY = 'pvv.token';
+    var player = { token: null, name: null };
+    var online = true;
+    var submitted = false;
+
+    function readToken() {
+      try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; }
+    }
+    function writeToken(t) {
+      try { localStorage.setItem(TOKEN_KEY, t); } catch (e) {}
+    }
+
+    function api(path, options) {
+      return fetch(path, options).then(function (r) {
+        return r.text().then(function (raw) {
+          var body = null;
+          try { body = raw ? JSON.parse(raw) : null; } catch (e) { /* not JSON */ }
+          // Never show a raw parser message to someone at a conference stand.
+          if (!r.ok)  throw new Error((body && body.error) || 'Something went wrong. Try again.');
+          if (!body)  throw new Error('Something went wrong. Try again.');
+          return body;
+        });
+      });
+    }
+
+    var panels = {
+      gate:    document.getElementById('gate'),
+      welcome: document.getElementById('welcome'),
+      scores:  document.getElementById('scores')
+    };
+
+    function showPanel(name) {
+      for (var k in panels) panels[k].classList.toggle('on', k === name);
+      screen = name ? 'ui' : screen;
+      if (name === 'scores') {
+        loadScores();
+        // Where "back" goes depends on whether we know this person yet.
+        document.getElementById('scoresBack').textContent =
+          player.token ? 'START A NEW GAME' : 'ENTER AND PLAY';
+      }
+      if (name === 'welcome') {
+        document.getElementById('welcomeName').textContent = player.name || '';
+      }
+    }
+
+    function hidePanels() {
+      for (var k in panels) panels[k].classList.remove('on');
+    }
+
+    /* The button at the bottom of the high scores page. Someone we already
+       know goes straight into a new game; someone we do not goes to the form,
+       because that is the only way back in. */
+    function leaveScores() {
+      if (!online || player.token) { toSelect(); return; }
+      showPanel('gate');
+    }
+
+    function toSelect() {
+      hidePanels();
+      screen = 'select';
+      selectClock = 0;
+      hoverCard = -1;
+      lastTime = 0;
+    }
+
+    function loadScores() {
+      var list = document.getElementById('scoreList');
+      list.innerHTML = '<li class="empty">loading…</li>';
+      api('/api/scores').then(function (data) {
+        var rows = data.scores || [];
+        if (!rows.length) { list.innerHTML = '<li class="empty">no scores yet — be the first</li>'; return; }
+        list.innerHTML = '';
+        rows.forEach(function (row, i) {
+          var li = document.createElement('li');
+          var side = row.side === 'volume' ? 'volume' : 'precision';
+          li.innerHTML =
+            '<span class="rank">' + (i + 1) + '</span>' +
+            '<span class="name"></span>' +
+            '<span class="side ' + side + '">' + side.toUpperCase() + '</span>' +
+            '<span class="val">' + row.score + '</span>';
+          li.querySelector('.name').textContent = row.playerName;
+          list.appendChild(li);
+        });
+      }).catch(function () {
+        list.innerHTML = '<li class="empty">could not load the board</li>';
+      });
+    }
+
+    function submitScore() {
+      if (!online || !player.token || submitted || !game) return;
+      submitted = true;
+      var st = game.state;
+      api('/api/score', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          token: player.token,
+          side: st.character,
+          score: st.score,
+          seconds: st.elapsed,
+          won: st.phase === 'won',
+          invadersLeft: st.aliveCount,
+          shotsFired: st.stats.shotsFired,
+          shotsHit: st.stats.shotsHit,
+          shotsBlocked: st.stats.shotsAbsorbed
+        })
+      }).catch(function () {});
+    }
+
+    /* ---- wiring ---------------------------------------------------------- */
+    document.addEventListener('click', function (e) {
+      var go = e.target.getAttribute && e.target.getAttribute('data-go');
+      if (!go) return;
+      if (go === 'select') toSelect();
+      else showPanel(go);
+    });
+
+    document.getElementById('scoresBack').addEventListener('click', leaveScores);
+
+    document.getElementById('gateForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = document.getElementById('gateGo');
+      var err = document.getElementById('gateError');
+      err.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'ONE MOMENT…';
+      api('/api/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          playerName: document.getElementById('fPlayer').value,
+          fullName:   document.getElementById('fName').value,
+          company:    document.getElementById('fCompany').value,
+          email:      document.getElementById('fEmail').value
+        })
+      }).then(function (data) {
+        player.token = data.token;
+        player.name = data.playerName;
+        writeToken(data.token);
+        toSelect();
+      }).catch(function (e2) {
+        err.textContent = e2.message || 'Something went wrong.';
+      }).then(function () {
+        btn.disabled = false;
+        btn.textContent = 'CONTINUE';
+      });
+    });
+
+    /* ---- boot ------------------------------------------------------------ */
+    function boot() {
+      var token = readToken();
+      api('/api/me?token=' + encodeURIComponent(token || '')).then(function (data) {
+        online = true;
+        if (data.known) { player.token = token; player.name = data.playerName; showPanel('welcome'); }
+        else { showPanel('gate'); }
+      }).catch(function () {
+        online = false;          // no server: just play
+        toSelect();
+      });
+    }
+
     function startRound(characterId) {
       var seed = seedParam != null ? seedParam : String(Date.now());
       seedLabel = String(seed);
       game = PVV.createGame({ character: characterId, seed: seed });
+      hidePanels();
       screen = 'play';
       accumulator = 0;
+      submitted = false;
     }
 
     function backToSelect() {
@@ -118,6 +436,14 @@
       game = null;
       selectClock = 0;
       hoverCard = -1;
+    }
+
+    /* Two tappable buttons on the end card. */
+    function endButtons() {
+      var bw = 210, bx = (W - bw) / 2;
+      var list = [{ x: bx, y: H - 168, w: bw, h: 38, act: 'again', label: 'PLAY AGAIN' }];
+      if (online) list.push({ x: bx, y: H - 118, w: bw, h: 38, act: 'scores', label: 'HIGH SCORES' });
+      return list;
     }
 
     /* ======================================================================
@@ -181,7 +507,17 @@
         if (i >= 0) startRound(CHARACTERS[i].id);
         return true;
       }
-      if (screen === 'end' && endClock > 0.7) { backToSelect(); return true; }
+      if (screen === 'end' && endClock > 0.5) {
+        var btns = endButtons();
+        for (var b = 0; b < btns.length; b++) {
+          var r = btns[b];
+          if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) {
+            if (r.act === 'again') backToSelect(); else showPanel('scores');
+            return true;
+          }
+        }
+        return true;   // swallow taps on the card itself
+      }
       return false;
     }
 
@@ -585,7 +921,7 @@
         ['SHOTS CONNECTED', s.stats.shotsHit + '  (' + hitRate + ')']
       ];
       if (s.stats.shotsAbsorbed > 0) rows.push(['BLOCKED BY SPAM', String(s.stats.shotsAbsorbed)]);
-      if (!won) rows.push(['INVADERS LEFT', String(s.aliveCount) + ' of 35']);
+      if (!won) rows.push(['INVADERS LEFT', s.aliveCount + ' of ' + s.invaders.length]);
 
       var y = 266;
       for (var i = 0; i < rows.length; i++) {
@@ -598,12 +934,21 @@
         y += 32;
       }
 
-      if (endClock > 0.7) {
-        var pulse = 0.5 + 0.5 * Math.sin(endClock * 3);
-        ctx.globalAlpha = fade * (0.45 + 0.55 * pulse);
-        text('TAP TO CHOOSE AGAIN', W / 2, H - 122, 12, getVar('--amber'));
-        ctx.globalAlpha = fade;
-        text('try the other side', W / 2, H - 100, 9, getVar('--dim'));
+      if (endClock > 0.5) {
+        var btns = endButtons();
+        for (var b = 0; b < btns.length; b++) {
+          var r = btns[b];
+          var primary = r.act === 'again';
+          ctx.fillStyle = primary ? getVar('--amber') : 'rgba(255,255,255,0.04)';
+          ctx.fillRect(r.x, r.y, r.w, r.h);
+          if (!primary) {
+            ctx.strokeStyle = '#22303d'; ctx.lineWidth = 1;
+            ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+          }
+          text(r.label, r.x + r.w / 2, r.y + r.h / 2 + 1, 12,
+               primary ? '#07080c' : getVar('--amber'));
+        }
+        text('try the other side', W / 2, H - 74, 9, getVar('--dim'));
       }
 
       ctx.globalAlpha = 1;
@@ -631,6 +976,8 @@
       fpsFrames++; fpsClock += delta;
       if (fpsClock >= 0.5) { fps = Math.round(fpsFrames / fpsClock); fpsFrames = 0; fpsClock = 0; }
 
+      if (screen === 'boot' || screen === 'ui') return;   // an overlay is up
+
       if (screen === 'select') {
         selectClock += delta;
         renderSelect();
@@ -650,7 +997,7 @@
         }
         if (steps >= MAX_STEPS_PER_FRAME) accumulator = 0;
 
-        if (game.state.phase !== 'playing') { screen = 'end'; endClock = 0; }
+        if (game.state.phase !== 'playing') { screen = 'end'; endClock = 0; submitScore(); }
         renderPlay();
         return;
       }
@@ -659,7 +1006,8 @@
       renderEnd();
     }
 
-    if (charParam === 'volume' || charParam === 'precision') startRound(charParam);
+    if (charParam === 'volume' || charParam === 'precision') { online = false; startRound(charParam); }
+    else boot();
     requestAnimationFrame(frame);
   })();
   </script>

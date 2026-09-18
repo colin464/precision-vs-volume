@@ -55,3 +55,21 @@ Open `index.html`. No build step, no dependencies.
 
 `?seed=123` replays an exact round · `?char=volume` skips the select screen ·
 `?debug=1` shows the counters.
+
+---
+
+## Conference build
+
+`worker.js` adds a sign-in page, lead capture and a shared high score board on
+top of the same game. Four endpoints: `/api/register`, `/api/me`, `/api/scores`
+and `/api/score`. Data lives in the tables in `schema.sql`.
+
+Opened without a server behind it, all of that stands down and the game goes
+straight to character select, so `index.html` still works on its own.
+
+Local run:
+
+```bash
+wrangler d1 execute precision_vs_volume --local --file=schema.sql
+wrangler dev --local
+```

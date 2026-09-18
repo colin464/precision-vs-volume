@@ -233,6 +233,43 @@ both asked for. Flagged for Colin rather than silently re-lengthened.
 
 ---
 
+## 7c. Conference build — sign-in, leads and high scores
+
+Added after the game was finished, for collecting leads at a stand.
+
+**What a visitor sees**
+
+| Situation | Screen | Ways out |
+|---|---|---|
+| First visit on this phone | Sign-in form | Continue -> character select · View high scores |
+| Looking at scores, not signed in | High scores | **ENTER AND PLAY** -> back to the form |
+| Been here before | **WELCOME BACK**, their player name | Start a new game · High scores |
+| Looking at scores, known | High scores | **START A NEW GAME** -> straight to character select |
+| Round over | End card | Play again · High scores |
+
+The form asks for **player name** (labelled *this is what shows on the high
+score board*), **your name**, **company** and **email**. Colin chose to run it
+with no privacy line; that is a one-line change if it is ever wanted.
+
+**Recognising a returning visitor** is per-phone. Signing in stores a token in
+the browser, and that token alone is enough next time — nobody types their
+email twice. The same email signing in again is treated as the same person:
+they keep their history and their details are updated rather than a duplicate
+being created.
+
+**The board** is the top ten, one row per person (their best run, so nobody can
+fill the board on their own), showing rank, player name, PRECISION or VOLUME,
+and the score. Anyone can look at it without signing in.
+
+**The screens either side of the game are real HTML**, not canvas, so the phone
+keyboard, autofill and scrolling all behave. Only the game itself is canvas.
+
+**Opened with no server behind it** — straight off the disk, say — all of this
+stands down and the game goes directly to character select, so `index.html`
+still works on its own and `sim.js` is untouched.
+
+---
+
 ## 8. Deviations from plan
 
 **Phase 5 — the Phase 4 problem is solved, and SPAM LIKELY is what solved it.**

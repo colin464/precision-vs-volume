@@ -1,0 +1,12 @@
+# Everything here stays on the server side or in the repo — it is not served.
+worker.js
+wrangler.jsonc
+schema.sql
+sim.js
+PLAN.md
+README.md
+.assetsignore
+.gitignore
+.claude/
+node_modules/
+.wrangler/
